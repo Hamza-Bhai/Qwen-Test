@@ -144,12 +144,21 @@ def arping_scan_subnet(subnet_prefix, count=254, timeout=2):
     except ImportError:
         return None
     target = f"{subnet_prefix}.1/{count}" if count < 254 else f"{subnet_prefix}.0/24"
-    pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=target)
     try:
+        pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=target)
         ans, _ = srp(pkt, timeout=timeout, verbose=False)
-    except PermissionError:
-        print("[!] Scapy ke liye root privileges chahiye. Fallback ping-sweep use kar rahe hain.")
-        return None
+    except (PermissionError, OSError) as e:
+        # Windows par Npcap/WinPcap missing -> layer-3 (IP) socket se try karo
+        msg = str(e).lower()
+        if "winpcap" in msg or "npcap" in msg or "layer 2" in msg:
+            print("[!] Layer-2 sniffing available nahi (Npcap install karein). Layer-3 ARP try kar rahe hain...")
+        else:
+            print("[!] Scapy ke liye root/admin privileges chahiye. Fallback try kar rahe hain.")
+        try:
+            from scapy.all import sr
+            ans, _ = sr(ARP(pdst=target), timeout=timeout, verbose=False)
+        except Exception:
+            return None
     found = []
     for snd, rcv in ans:
         found.append({"ip": rcv.psrc, "mac": rcv.hwsrc})
@@ -172,11 +181,17 @@ def ping_sweep(subnet_prefix, threads=60):
                 return
             except OSError:
                 continue
-        # ICMP-ish fallback via system ping (linux)
-        out = run(f"ping -c 1 -W 1 {ip}")
-        if "bytes from" in out:
-            with lock:
-                alive.append(ip)
+        # ICMP fallback via system ping (Windows: ping -n 1 -w 1, Linux/mac: -c/-W)
+        if os.name == "nt":
+            out = run(f"ping -n 1 -w 800 {ip}")
+            if "TTL=" in out or "ttl=" in out.lower():
+                with lock:
+                    alive.append(ip)
+        else:
+            out = run(f"ping -c 1 -W 1 {ip}")
+            if "bytes from" in out:
+                with lock:
+                    alive.append(ip)
 
     with ThreadPoolExecutor(max_workers=threads) as ex:
         list(ex.map(probe, range(1, 255)))
@@ -284,7 +299,10 @@ def is_mac(s):
 
 
 def block_device(target, unblock=False):
-    """iptables se device block/unblock. Root required."""
+    """iptables se device block/unblock. Root required (Linux only)."""
+    if os.name == "nt":
+        print("[!] Block/unblock abhi sirf Linux (iptables) par support hai. Windows par router/portal se manage karein.")
+        return False
     if os.geteuid() != 0:
         print("[!] Block/unblock ke liye sudo/root zaroori hai. Try: sudo python3 network_scanner.py block ...")
         return False
