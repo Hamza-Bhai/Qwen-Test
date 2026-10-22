@@ -32,7 +32,11 @@ class QuotaTracker:
     def __init__(self, db: Session, service: str = "youtube") -> None:
         self.db = db
         self.service = service
-        self.settings = get_settings()
+
+    @property
+    def settings(self):
+        """Resolve settings lazily so per-test env changes are always honored."""
+        return get_settings()
 
     @property
     def today(self) -> date:

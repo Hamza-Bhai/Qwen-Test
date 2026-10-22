@@ -65,3 +65,110 @@ export interface SyncResult {
   videos_upserted: number;
   quota_units_used: number;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — mirrors ChannelAuditRead in backend/app/schemas/channel.py.
+// ---------------------------------------------------------------------------
+
+export interface AuditVideoRanking {
+  youtube_video_id: string;
+  title: string;
+  thumbnail_url: string | null;
+  published_at: string | null;
+  view_count: number;
+  like_count: number | null;
+  comment_count: number | null;
+  duration_seconds: number | null;
+  age_days: number;
+  views_per_day: number;
+  vs_baseline_pct: number | null;
+  form: string; // "shorts" | "longform" | "unknown"
+}
+
+export interface AuditTopicGroup {
+  topic: string;
+  videos: number;
+  median_views_per_day: number;
+  vs_channel_baseline_pct: number | null;
+  example_titles: string[];
+}
+
+export interface AuditFinding {
+  key: string;
+  title: string;
+  severity: string; // high | medium | low | info
+  status: string; // detected | ok | inconclusive | fact
+  explanation: string;
+  recommended_action: string;
+  confidence: string; // high | medium | low | inconclusive
+  evidence: Record<string, unknown>;
+  data_limitations: string[];
+  kind: string; // fact | heuristic
+}
+
+export interface AuditPerformance {
+  videos_analyzed: number;
+  analyzed_from_total_synced: number;
+  total_views: number;
+  avg_views: number | null;
+  median_views: number | null;
+  stdev_views: number | null;
+  total_likes: number | null;
+  total_comments: number | null;
+  like_to_view_ratio: number | null;
+  comment_to_view_ratio: number | null;
+  likes_available_on: number;
+  comments_available_on: number;
+  hidden_stats_videos: number;
+  uploads_per_month: number | null;
+  days_since_last_upload: number | null;
+  first_published_at: string | null;
+  last_published_at: string | null;
+  avg_duration_seconds: number | null;
+  median_duration_seconds: number | null;
+  duration_known_on: number;
+  shorts_count: number;
+  longform_count: number;
+  format_unclassified: number;
+  shorts_avg_views: number | null;
+  longform_avg_views: number | null;
+  shorts_median_vpd: number | null;
+  longform_median_vpd: number | null;
+  distribution_buckets: { label: string; videos: number }[];
+  monthly_uploads: { month: string; uploads: number }[];
+}
+
+export interface AuditHealthComponent {
+  name: string;
+  weight: number;
+  score: number;
+  note: string;
+}
+
+export interface AuditHealthScore {
+  score: number | null;
+  band: string | null; // healthy | watch | at-risk | insufficient-data
+  components: AuditHealthComponent[];
+  method: string;
+  caveats: string[];
+}
+
+export interface ChannelAudit {
+  channel_id: number;
+  youtube_channel_id: string;
+  title: string;
+  audited_at: string;
+  computed_from: string;
+  config: Record<string, unknown>;
+  formulas: Record<string, string>;
+  performance: AuditPerformance;
+  health_score: AuditHealthScore;
+  findings: AuditFinding[];
+  top_performers: AuditVideoRanking[];
+  underperformers: AuditVideoRanking[];
+  outliers: AuditVideoRanking[];
+  strong_topics: AuditTopicGroup[];
+  weak_topics: AuditTopicGroup[];
+  insufficient_data: boolean;
+  notes: string[];
+}

@@ -40,7 +40,11 @@ class YouTubeService:
     def __init__(self, cache: ResponseCache, quota: QuotaTracker) -> None:
         self.cache = cache
         self.quota = quota
-        self.settings = get_settings()
+
+    @property
+    def settings(self):
+        """Resolve settings lazily so per-test env changes are always honored."""
+        return get_settings()
 
     # ------------------------------------------------------------------ core
     def _require_key(self) -> str:

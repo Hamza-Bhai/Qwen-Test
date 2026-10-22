@@ -13,25 +13,54 @@ from app.core.config import get_settings
 from app.db.base import Base
 import app.db.models  # noqa: F401  (registers all tables on Base.metadata)
 
-settings = get_settings()
+def _make_engine(url: str):
+    connect_args = {}
+    if url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+    eng = create_engine(url, connect_args=connect_args, future=True)
+    if url.startswith("sqlite"):
 
-connect_args = {}
-if settings.database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+        @event.listens_for(eng, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):  # noqa: ANN001
+            """Enable WAL and foreign keys on SQLite (parity with PostgreSQL FKs)."""
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
-engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+    return eng
 
-if settings.database_url.startswith("sqlite"):
 
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection, connection_record):  # noqa: ANN001
-        """Enable WAL and foreign keys on SQLite (parity with PostgreSQL FKs)."""
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
+engine = _make_engine(get_settings().database_url)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def get_engine():
+    """Return the CURRENT module-level engine.
+
+    Always resolve the engine through this function (never ``from
+    app.db.session import engine``) so test isolation via ``rebind_engine``
+    cannot be defeated by an early-imported stale reference.
+    """
+    return engine
+
+
+def rebind_engine(url: str):
+    """Point the module-level engine/session at a new database URL.
+
+    Used by tests (and nothing in production) so the app can follow the
+    per-test DATABASE_URL even when this module was imported earlier.
+    Disposes the previous engine first so its pooled connections (and any
+    SQLite file handles) are released immediately instead of leaking until GC.
+    Returns the previous engine so callers can restore it.
+    """
+    global engine
+    old = engine
+    engine = _make_engine(url)
+    SessionLocal.configure(bind=engine)
+    if old is not engine:
+        old.dispose()
+    return old
 
 
 def init_db() -> None:

@@ -1,4 +1,4 @@
-import type { Channel, ChannelOverview, SyncResult } from "./types";
+import type { Channel, ChannelAudit, ChannelOverview, SyncResult } from "./types";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -109,4 +109,9 @@ export function syncChannel(id: number): Promise<SyncResult> {
 /** DELETE /api/v1/channels/{id} */
 export function deleteChannel(id: number): Promise<void> {
   return request<void>(`/channels/${id}`, { method: "DELETE" });
+}
+
+/** GET /api/v1/channels/{id}/audit — Phase-2 rule-based audit. Pure DB reads, zero quota. */
+export function getChannelAudit(id: number, limit = 50): Promise<ChannelAudit> {
+  return request<ChannelAudit>(`/channels/${id}/audit?limit=${limit}`);
 }
