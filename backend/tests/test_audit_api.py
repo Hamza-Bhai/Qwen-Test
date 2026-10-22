@@ -153,3 +153,40 @@ class TestPhase1Regression:
         resp = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/videos")
         assert resp.status_code == 200
         assert len(resp.json()) == 1
+
+    def test_transparency_fields_present(self, client, analyzed):
+        """Reliability-hardening: API must expose provenance, unavailable
+        metrics, confidence rules and data freshness to the frontend."""
+        body = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/audit").json()
+        # Provenance taxonomy with all five classes defined.
+        assert set(body["provenance"]) == {
+            "observed", "calculated", "heuristic", "unavailable", "inconclusive"
+        }
+        assert all(isinstance(v, str) and v for v in body["provenance"].values())
+        # Unavailable private metrics listed explicitly (never rendered as 0).
+        joined = " ".join(body["unavailable_metrics"]).lower()
+        for metric in ("ctr", "impression", "watch time", "retention",
+                       "traffic source", "geograph"):
+            assert metric in joined, metric
+        # Confidence labels have documented meanings; no numeric percentages.
+        assert set(body["confidence_rules"]) == {
+            "high", "medium", "low", "inconclusive"
+        }
+        assert "%" not in " ".join(body["confidence_rules"].values())
+        # Freshness block present with correct types.
+        fresh = body["data_freshness"]
+        assert isinstance(fresh["sample_size_analyzed"], int)
+        assert isinstance(fresh["stale_data"], bool)
+        # last_video_stats_sync may be None (missing timestamp) but the key
+        # must exist — absence is reported, never faked as zero-age.
+        assert "last_video_stats_sync" in fresh
+        assert "stats_age_days" in fresh
+        if fresh["last_video_stats_sync"] is None:
+            assert fresh["stats_age_days"] is None and fresh["stale_data"] is False
+
+    def test_format_labels_estimated_not_verified(self, client, analyzed):
+        body = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/audit").json()
+        blob = str(body).lower()
+        assert "estimated-shorts" in blob or "estimated-longform" in blob
+        assert any("official shorts flag" in n.lower() for n in body["notes"])
+

@@ -171,4 +171,18 @@ export interface ChannelAudit {
   weak_topics: AuditTopicGroup[];
   insufficient_data: boolean;
   notes: string[];
+  // Reliability-transparency fields (mirrored from ChannelAuditRead).
+  provenance?: Record<string, string>;
+  unavailable_metrics?: string[];
+  confidence_rules?: Record<string, string>;
+  data_freshness?: AuditDataFreshness;
+}
+
+/** GET /channels/{id}/audit `data_freshness` block. Nullable timestamps are
+ *  reported as null — never faked as zero-age data. */
+export interface AuditDataFreshness {
+  last_video_stats_sync: string | null;
+  stats_age_days: number | null;
+  sample_size_analyzed: number;
+  stale_data: boolean;
 }

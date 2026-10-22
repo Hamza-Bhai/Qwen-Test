@@ -53,6 +53,132 @@ import { ErrorMessage } from "@/components/error-message";
 
 const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
 
+/** Map machine format identifiers to honest human wording. The backend only
+ *  ever emits "estimated-*" or "unknown" — duration is not an official Shorts
+ *  flag, so we never render these as verified classifications. */
+export function formatFormLabel(form: string): string {
+  switch (form) {
+    case "estimated-shorts":
+      return "Estimated Shorts";
+    case "estimated-longform":
+      return "Estimated long-form";
+    case "unknown":
+      return "Unknown format";
+    default:
+      // Legacy values from audits persisted before relabeling.
+      if (form === "shorts") return "Estimated Shorts";
+      if (form === "long") return "Estimated long-form";
+      return form.replace(/-/g, " ");
+  }
+}
+
+const PROVENANCE_ORDER = ["observed", "calculated", "heuristic", "unavailable", "inconclusive"];
+
+/** Reliability-transparency panel. All text comes from the API response
+ *  (`provenance`, `unavailable_metrics`, `confidence_rules`, `data_freshness`)
+ *  — nothing here is hardcoded per-channel data. */
+function TransparencyPanel({ audit }: { audit: ChannelAudit }) {
+  const fresh = audit.data_freshness;
+  const prov = audit.provenance ?? {};
+  const conf = audit.confidence_rules ?? {};
+  const unavailable = audit.unavailable_metrics ?? [];
+
+  return (
+    <Card aria-label="Audit data transparency">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Info className="h-4 w-4" aria-hidden="true" /> About this data &amp; its limits
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-5 text-sm md:grid-cols-2">
+        {/* Data freshness */}
+        <div>
+          <p className="font-medium">Data freshness</p>
+          {fresh ? (
+            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              <li>
+                Videos analyzed:{" "}
+                <span className="tabular-nums text-foreground">{formatNumber(fresh.sample_size_analyzed)}</span>
+              </li>
+              <li>
+                Last video-statistics sync:{" "}
+                <span className="text-foreground">
+                  {fresh.last_video_stats_sync ? formatDateTime(fresh.last_video_stats_sync) : "Not recorded"}
+                </span>
+              </li>
+              <li>
+                Statistics age:{" "}
+                <span className="text-foreground">
+                  {fresh.stats_age_days !== null
+                    ? `${formatNumber(fresh.stats_age_days)} day${fresh.stats_age_days === 1 ? "" : "s"}`
+                    : "Unknown — no sync timestamp was stored"}
+                </span>
+              </li>
+            </ul>
+          ) : (
+            <p className="mt-1 text-muted-foreground">The backend did not report data freshness for this audit.</p>
+          )}
+          {!fresh?.last_video_stats_sync && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Freshness cannot be determined — treat statistics as potentially outdated and re-sync before relying on
+              recent-performance findings.
+            </p>
+          )}
+          {fresh?.stale_data && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Video statistics are more than 7 days old. Re-sync the channel before acting on recency or trend
+              findings.
+            </p>
+          )}
+        </div>
+
+        {/* Provenance taxonomy */}
+        <div>
+          <p className="font-medium">How to read every number in this report</p>
+          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+            {PROVENANCE_ORDER.filter((k) => k in prov).map((k) => (
+              <li key={k}>{prov[k]}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Unavailable metrics */}
+        <div>
+          <p className="font-medium">Metrics NOT available from public data</p>
+          {unavailable.length > 0 ? (
+            <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+              {unavailable.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-muted-foreground">The backend returned no unavailable-metric list.</p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            These are never shown as zero — they are simply absent from public YouTube data.
+          </p>
+        </div>
+
+        {/* Confidence rules */}
+        <div>
+          <p className="font-medium">What confidence labels mean</p>
+          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+            {["high", "medium", "low", "inconclusive"]
+              .filter((k) => k in conf)
+              .map((k) => (
+                <li key={k}>
+                  <span className="capitalize font-medium text-foreground">{k}:</span> {conf[k]}
+                </li>
+              ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function severityVariant(sev: string): "destructive" | "secondary" | "outline" {
   if (sev === "high") return "destructive";
   if (sev === "medium") return "secondary";
@@ -128,7 +254,9 @@ function VideoRow({ video, baselineLabel }: { video: AuditVideoRanking; baseline
         </a>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {formatDate(video.published_at)} · {video.age_days}d old · {formatDuration(video.duration_seconds)} ·{" "}
-          <span className="capitalize">{video.form}</span>
+          <span title="Format is estimated from video duration; YouTube's public API has no official Shorts flag.">
+            {formatFormLabel(video.form)}
+          </span>
         </p>
         <p className="mt-0.5 text-xs tabular-nums">
           {formatCompact(video.view_count)} views · {formatDecimal(video.views_per_day)} views/day ·{" "}
@@ -308,6 +436,9 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         </Card>
       )}
 
+      {/* Reliability-transparency panel (freshness / provenance / limits). */}
+      <TransparencyPanel audit={audit} />
+
       {/* A. Health score */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
@@ -400,7 +531,9 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
                     <Badge variant="outline" className="capitalize">
                       {f.status}
                     </Badge>
-                    <Badge variant="outline">confidence: {f.confidence}</Badge>
+                    <Badge variant="outline" title={audit.confidence_rules?.[f.confidence]}>
+                      confidence: {f.confidence}
+                    </Badge>
                     <Badge variant="outline">{f.kind === "fact" ? "measured fact" : "heuristic"}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{f.explanation}</p>
@@ -447,8 +580,8 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           value={formatDuration(perf.median_duration_seconds)}
           hint={`duration known on ${perf.duration_known_on} videos`}
         />
-        <Stat label="Shorts" value={formatNumber(perf.shorts_count)} />
-        <Stat label="Long-form" value={formatNumber(perf.longform_count)} />
+        <Stat label="Shorts" value={formatNumber(perf.shorts_count)} hint="estimated from duration ≤ 5 min" />
+        <Stat label="Long-form" value={formatNumber(perf.longform_count)} hint="estimated from duration > 5 min" />
         <Stat label="Unclassified format" value={formatNumber(perf.format_unclassified)} />
         <Stat label="Hidden-stats videos" value={formatNumber(perf.hidden_stats_videos)} hint="excluded from ratio totals" />
       </div>
@@ -506,10 +639,12 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         {formatsAvailable && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Shorts vs long-form</CardTitle>
+              <CardTitle className="text-base">Estimated Shorts vs long-form</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Average total views per video by format ({perf.shorts_count} Shorts · {perf.longform_count} long-form).
-                Totals are age-skewed; the age-normalized comparison is shown below the chart.
+                Average total views per video by format ({perf.shorts_count} estimated Shorts ·{" "}
+                {perf.longform_count} estimated long-form). Formats are inferred from duration only — YouTube&apos;s
+                public API exposes no official Shorts flag. Totals are age-skewed; the age-normalized comparison is
+                shown below the chart.
               </p>
             </CardHeader>
             <CardContent>
@@ -569,8 +704,12 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Recurring strong topics
+              <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Recurring strong title keywords
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Words repeated across video titles with above-baseline median views/day — lexical grouping, not a
+              semantic-topic verdict.
+            </p>
           </CardHeader>
           <CardContent>
             <TopicList topics={audit.strong_topics} kind="strong" />
@@ -579,8 +718,11 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" /> Consistently weak topics
+              <TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" /> Consistently weak title keywords
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Words repeated in underperforming titles; ambiguous words and synonyms are not distinguished.
+            </p>
           </CardHeader>
           <CardContent>
             <TopicList topics={audit.weak_topics} kind="weak" />

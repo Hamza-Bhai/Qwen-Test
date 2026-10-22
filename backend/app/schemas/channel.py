@@ -180,3 +180,8 @@ class ChannelAuditRead(BaseModel):
     weak_topics: list[AuditTopicGroup]
     insufficient_data: bool
     notes: list[str]
+    # Reliability-transparency fields (mirrored from analytics.audit.ChannelAudit).
+    provenance: dict = {}
+    unavailable_metrics: list[str] = []
+    confidence_rules: dict = {}
+    data_freshness: dict = {}
