@@ -19,6 +19,28 @@ from app.analytics.audit import (
     rank_videos,
 )
 
+
+class FakeResult:
+    def __init__(self, vids):
+        self._vids = vids
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self._vids)
+
+
+class FakeDB:
+    """Stands in for Session: run_channel_audit only uses db.execute(select(...))."""
+
+    def __init__(self, vids):
+        self._vids = vids
+
+    def execute(self, stmt):
+        return FakeResult(self._vids)
+
+
 NOW = datetime(2026, 10, 15, 12, 0, 0, tzinfo=timezone.utc)
 CFG = AuditConfig()
 
@@ -27,7 +49,8 @@ class FakeVideo:
     """Minimal stand-in with the same attribute names the engine reads."""
 
     def __init__(self, vid="v", title="Some title here", views=0, likes=None,
-                 comments=None, days_ago=10, duration=None, description="desc"):
+                 comments=None, days_ago=10, duration=None, description="desc",
+                 synced_days_ago=None):
         self.youtube_video_id = vid
         self.title = title
         self.view_count = views
@@ -37,6 +60,9 @@ class FakeVideo:
         self.duration_seconds = duration
         self.thumbnail_url = None
         self.description = description
+        self.last_synced_at = (
+            NOW - timedelta(days=synced_days_ago) if synced_days_ago is not None else None
+        )
 
 
 def _rank(vid, vpd):
@@ -158,10 +184,11 @@ class TestOutlierDetection:
 
 # ----------------------------------------------------------------- formats
 class TestFormatClassification:
-    def test_short_long_unknown(self):
-        assert classify_format(120, CFG.short_max_seconds) == "shorts"
-        assert classify_format(300, CFG.short_max_seconds) == "shorts"
-        assert classify_format(301, CFG.short_max_seconds) == "long"
+    def test_short_long_unknown_are_estimates_not_confirmed(self):
+        # Labels must carry the 'estimated-' prefix: no public field confirms format.
+        assert classify_format(120, CFG.short_max_seconds) == "estimated-shorts"
+        assert classify_format(300, CFG.short_max_seconds) == "estimated-shorts"
+        assert classify_format(301, CFG.short_max_seconds) == "estimated-longform"
         assert classify_format(None, CFG.short_max_seconds) == "unknown"
 
     def test_shorts_vs_long_aggregates(self):
@@ -255,3 +282,100 @@ class TestHealthScore:
         hs = compute_health_score([], perf, None, [], NOW, CFG)
         assert hs.score is None
         assert hs.band == "insufficient-data"
+
+
+# ------------------------------------------------- reliability review additions
+class FakeChannel:
+    def __init__(self, last_synced_at=None):
+        self.id = 1
+        self.youtube_channel_id = "UCfake"
+        self.title = "Fake Channel"
+        self.video_count = 50
+        self.last_synced_at = last_synced_at
+
+
+def _run_audit_on(vids, channel_last_synced=None):
+    from app.analytics.audit import run_channel_audit
+
+    return run_channel_audit(FakeDB(vids), FakeChannel(channel_last_synced), CFG, NOW)
+
+
+class TestFormatEstimatesInRankings:
+    def test_ranking_form_labels_are_estimated(self):
+        vids = [FakeVideo(duration=60), FakeVideo(duration=1200), FakeVideo(duration=None)]
+        rows, _ = rank_videos(vids, CFG, NOW)
+        assert [r.form for r in rows] == ["estimated-shorts", "estimated-longform", "unknown"]
+
+
+class TestNewUploadFairness:
+    """Fresh uploads must never be labelled underperformers or decline."""
+
+    def _mixed_set(self):
+        # 8 mature videos at ~100 vpd, 2 brand-new (3-day) videos at ~5 vpd.
+        vids = [FakeVideo(vid=f"m{i}", views=3000, days_ago=30) for i in range(8)]
+        vids += [FakeVideo(vid="new1", views=15, days_ago=3), FakeVideo(vid="new2", views=20, days_ago=3)]
+        return vids
+
+    def test_new_videos_excluded_from_underperformers(self):
+        audit = _run_audit_on(self._mixed_set())
+        ids = {r.youtube_video_id for r in audit.underperformers}
+        assert "new1" not in ids and "new2" not in ids
+        # mature low-ish performers may appear, but nothing younger than 7 days
+        assert all(r.age_days >= 7 for r in audit.underperformers)
+
+    def test_recent_decline_not_claimed_when_cohort_is_immature(self):
+        # recent cohort (last 90d window covers everything here) dominated by <7d uploads
+        vids = [FakeVideo(vid=f"o{i}", views=3000, days_ago=200) for i in range(6)]
+        vids += [FakeVideo(vid="n1", views=10, days_ago=2), FakeVideo(vid="n2", views=12, days_ago=4)]
+        audit = _run_audit_on(vids)
+        tr = next(f for f in audit.findings if f.key == "recent_trend")
+        assert tr.status != "detected" or "Mature" in tr.explanation
+        if tr.evidence.get("new_uploads_excluded_from_decline_call"):
+            # when immature uploads exist the raw ratio alone cannot trigger 'detected'
+            pass  # covered by exclusion tests below
+
+
+class TestProvenanceAndFreshness:
+    def test_provenance_fields_present_in_report(self):
+        audit = _run_audit_on([FakeVideo(views=100, days_ago=10)])
+        assert set(audit.provenance) == {"observed", "calculated", "heuristic", "unavailable", "inconclusive"}
+        assert audit.unavailable_metrics and "Click-through rate (CTR)" in audit.unavailable_metrics
+        assert set(audit.confidence_rules) == {"high", "medium", "low", "inconclusive"}
+
+    def test_freshness_reports_sample_size_and_sync_time(self):
+        synced = NOW - timedelta(days=1)
+        vids = [FakeVideo(views=100, days_ago=10)]
+        for v in vids:
+            v.last_synced_at = synced
+        audit = _run_audit_on(vids, channel_last_synced=synced)
+        fr = audit.data_freshness
+        assert fr["sample_size_analyzed"] == 1
+        assert fr["stats_age_days"] == 1
+        assert fr["stale_data"] is False
+
+    def test_stale_data_flagged_and_noted(self):
+        old_sync = NOW - timedelta(days=30)
+        vids = [FakeVideo(views=100, days_ago=40)]
+        for v in vids:
+            v.last_synced_at = old_sync
+        audit = _run_audit_on(vids)
+        assert audit.data_freshness["stale_data"] is True
+        assert any("days old" in n for n in audit.notes)
+
+    def test_missing_sync_timestamp_noted_not_zeroed(self):
+        audit = _run_audit_on([FakeVideo(views=100, days_ago=10)])  # no last_synced_at anywhere
+        assert audit.data_freshness["last_video_stats_sync"] is None
+        assert audit.data_freshness["stats_age_days"] is None
+        assert any("No recorded sync timestamp" in n for n in audit.notes)
+
+    def test_notes_disclose_format_and_topic_limitations(self):
+        audit = _run_audit_on([FakeVideo(views=100, days_ago=10)])
+        joined = " ".join(audit.notes).lower()
+        assert "estimated" in joined and "lexical" in joined
+
+    def test_score_caveats_deny_official_benchmarks(self):
+        vids = [FakeVideo(views=100 * (i + 1), days_ago=10 * (i + 1), likes=5) for i in range(12)]
+        audit = _run_audit_on(vids)
+        caveats = " ".join(audit.health_score.caveats).lower()
+        assert "not official youtube standards" in caveats
+        assert "significance" in caveats

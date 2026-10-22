@@ -146,7 +146,8 @@ class VideoRanking:
     age_days: int
     views_per_day: float
     vs_baseline_pct: float | None  # relative to channel median vpd
-    form: str                      # "shorts" | "long" | "unknown"
+    form: str                      # "estimated-shorts" | "estimated-longform" | "unknown"
+    last_synced_at: datetime | None = None  # when stats were observed (freshness)
 
 
 @dataclass
@@ -200,6 +201,10 @@ class ChannelAudit:
     weak_topics: list[TopicGroup]
     insufficient_data: bool
     notes: list[str]
+    provenance: dict[str, str] | None = None
+    unavailable_metrics: list[str] | None = None
+    confidence_rules: dict[str, str] | None = None
+    data_freshness: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------- helpers
@@ -215,9 +220,9 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
-def _safe_div(num: float, den: float) -> float | None:
-    """Zero-denominator guard: returns None, never raises."""
-    if den == 0:
+def _safe_div(num: float | None, den: float) -> float | None:
+    """Zero-denominator / missing-numerator guard: returns None, never raises."""
+    if num is None or den == 0:
         return None
     return num / den
 
@@ -236,9 +241,42 @@ def _quantiles(sorted_vals: list[float]) -> tuple[float, float]:
 
 
 def classify_format(duration_seconds: int | None, short_max: int) -> str:
+    """Duration-based format ESTIMATE only.
+
+    YouTube's Data API v3 does not expose an official Shorts flag, so no public
+    field can *confirm* a video's format. Labels are prefixed with 'estimated-'
+    so nothing downstream can silently treat them as ground truth.
+    """
     if duration_seconds is None:
         return "unknown"
-    return "shorts" if duration_seconds <= short_max else "long"
+    return "estimated-shorts" if duration_seconds <= short_max else "estimated-longform"
+
+
+# ------------------------------------------------------------------ provenance
+PROVENANCE_LABELS = {
+    "observed": "Observed — retrieved directly from the YouTube Data API",
+    "calculated": "Calculated — deterministic math on observed data",
+    "heuristic": "Heuristic — rule/threshold interpretation, not a verified fact",
+    "unavailable": "Unavailable — cannot be obtained from public data",
+    "inconclusive": "Inconclusive — insufficient evidence for a useful judgment",
+}
+
+UNAVAILABLE_METRICS = [
+    "Click-through rate (CTR)",
+    "Impression counts",
+    "Watch time / average view duration",
+    "Audience retention",
+    "Traffic sources",
+    "Subscriber source / audience geography",
+]
+
+CONFIDENCE_RULES = {
+    "high": "Directly measured from complete stored data; arithmetic only.",
+    "medium": "Derived from real data but subject to stated limitations "
+              "(small cohorts, age effects, or missing context).",
+    "low": "Lexical/heuristic signal only; treat as a question to investigate, not a verdict.",
+    "inconclusive": "Evidence insufficient — deliberately no judgement made.",
+}
 
 
 def _topic_tokens(title: str) -> list[str]:
@@ -290,13 +328,13 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
     shorts_views, long_views, shorts_vpd, long_vpd = [], [], [], []
     for v in videos:
         form = classify_format(v.duration_seconds, cfg.short_max_seconds)
-        {"shorts": shorts_ids, "long": long_ids, "unknown": unknown_ids}[form].append(v)
+        {"estimated-shorts": shorts_ids, "estimated-longform": long_ids, "unknown": unknown_ids}[form].append(v)
         age = max(1, (now - (_aware(v.published_at) or now)).days)
         vpd = (v.view_count or 0) / age
-        if form == "shorts":
+        if form == "estimated-shorts":
             shorts_views.append(v.view_count or 0)
             shorts_vpd.append(vpd)
-        elif form == "long":
+        elif form == "estimated-longform":
             long_views.append(v.view_count or 0)
             long_vpd.append(vpd)
 
@@ -376,6 +414,7 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
                 views_per_day=round(vpd, 2),
                 vs_baseline_pct=None,
                 form=classify_format(v.duration_seconds, cfg.short_max_seconds),
+                last_synced_at=_aware(v.last_synced_at),
             )
         )
     vpds = sorted(r.views_per_day for r in rows)
@@ -515,19 +554,38 @@ def build_findings(
                                "Compare again after more uploads accumulate.", "inconclusive",
                                {"recent_videos": len(recent)}, ["Small cohorts swing wildly; treat cautiously once data grows."]))
         else:
+            # Fairness guard: a video younger than ~7 days has not had time to
+            # accumulate views; including it makes any fresh upload look like a
+            # collapse. It is measured but excluded from the DECLINE judgement.
+            mature_recent = [r for r in recent if r.age_days >= 7]
+            immature = len(recent) - len(mature_recent)
             rec_med = median(r.views_per_day for r in recent)
             hist_base = median([r.views_per_day for r in (older if len(older) >= 3 else rows)])
             ratio = _safe_div(rec_med, hist_base)
             ev = {"recent_median_vpd": round(rec_med, 2), "baseline_median_vpd": round(hist_base, 2),
-                  "recent_videos": len(recent), "window_days": cfg.recent_window_days}
-            if ratio is not None and ratio < 0.6:
+                  "recent_videos": len(recent), "window_days": cfg.recent_window_days,
+                  "new_uploads_excluded_from_decline_call": immature}
+            decline_basis = _safe_div(
+                median(r.views_per_day for r in mature_recent) if mature_recent else None, hist_base
+            ) if immature else ratio
+            if immature:
+                ev["mature_only_ratio"] = round(decline_basis, 3) if decline_basis is not None else None
+            effective = decline_basis if immature else ratio
+            if effective is not None and effective < 0.6 and len(mature_recent) >= 2:
                 findings.append(_f("recent_trend", "Weak recent performance vs own history", "high", "detected",
-                                   f"Videos from the last {cfg.recent_window_days} days earn {ratio*100:.0f}% of the channel's "
-                                   f"own historical median views/day ({rec_med:.1f} vs {hist_base:.1f}). Baseline: channel's own videos.",
+                                   f"Mature videos from the last {cfg.recent_window_days} days earn {effective*100:.0f}% of the "
+                                   f"channel's own historical median views/day ({rec_med:.1f} vs {hist_base:.1f}). "
+                                   f"Baseline: the channel's own videos. No statistical significance test is claimed.",
                                    "Review recent titles/topics/thumbnails against the channel's best-performing patterns.",
                                    "medium", ev,
-                                   ["Views/day keeps falling as videos age slowly; very fresh uploads (<1 week) can read low.",
-                                    "Public data cannot show whether the drop is demand-side (impression volume) or content-side."]))
+                                   ["Views/day keeps falling as videos age slowly; uploads under 7 days old were excluded from the decline call.",
+                                    "Public data cannot show whether the drop is demand-side or content-side — no causal claim is made."]))
+            elif effective is not None and effective < 0.6 and immature and len(mature_recent) < 2:
+                findings.append(_f("recent_trend", "Recent performance trend", "low", "inconclusive",
+                                   f"The recent cohort is dominated by uploads under 7 days old ({immature} of {len(recent)}); "
+                                   "they have not had time to accumulate views, so no decline can be judged yet.",
+                                   "Re-audit once recent uploads are at least a week old.", "inconclusive", ev,
+                                   ["New-upload view accumulation is incomplete; treating low vpd as failure would be misleading."]))
             elif ratio is not None and ratio > 1.5:
                 findings.append(_f("recent_trend", "Recent uploads outperform history", "info", "detected",
                                    f"Recent videos average {ratio*100:.0f}% of the historical views/day baseline.",
@@ -558,10 +616,10 @@ def build_findings(
                                f"Top-5 share of analyzed views is {(share or 0)*100:.0f}% (below threshold).",
                                "No action needed.", "high", ev, []))
 
-    # ---- 5. Repetitive topics ----
+    # ---- 5. Repetitive title keywords (lexical, NOT semantic topics) ----
     if small_sample:
-        findings.append(_f("topic_repetition", "Topic repetition", "low", "inconclusive",
-                           "Too few videos to detect recurring topics.", "Analyze more videos.", "inconclusive", {}, limits_small))
+        findings.append(_f("topic_repetition", "Repeated title keywords", "low", "inconclusive",
+                           "Too few videos to detect recurring title keywords.", "Analyze more videos.", "inconclusive", {}, limits_small))
     else:
         token_counts: dict[str, int] = {}
         for r in rows:
@@ -570,16 +628,17 @@ def build_findings(
         dominant = sorted(token_counts.items(), key=lambda kv: -kv[1])[:3]
         coverage = [(t, c, round(c / n, 2)) for t, c in dominant if n and c / n >= 0.5]
         if coverage:
-            findings.append(_f("topic_repetition", "Repetitive topics in titles", "low", "detected",
+            findings.append(_f("topic_repetition", "One repeated title keyword dominates uploads", "low", "detected",
                                "One word appears in half or more of analyzed titles: "
                                + ", ".join(f"'{t}' ({c}/{n} videos)" for t, c, _ in coverage)
-                               + ". This is a lexical signal, not a semantic-cluster analysis.",
+                               + ". This measures WORD overlap only — it is not a verified list of semantic topics.",
                                "Consider adjacent angles or formats to broaden topical reach.", "low",
                                {"dominant_tokens": coverage},
-                               ["Title keyword overlap is a crude proxy; real topical similarity needs deeper NLP (later phase)."]))
+                               ["Lexical matching cannot tell apart different meanings of the same word, "
+                                "nor group synonyms; real topic clustering needs NLP (later phase)."]))
         else:
-            findings.append(_f("topic_repetition", "Topic repetition", "low", "ok",
-                              "No single title token dominates >=50% of analyzed videos.", "No action needed.", "low",
+            findings.append(_f("topic_repetition", "Repeated title keywords", "low", "ok",
+                              "No single title keyword appears in >=50% of analyzed videos.", "No action needed.", "low",
                               {"checked_tokens": len(token_counts)}, ["Lexical proxy only."]))
 
     # ---- 6. Title & description optimization opportunity ----
@@ -716,6 +775,9 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
         "Score excludes components lacking data instead of penalizing them.",
         "Weights: " + ", ".join(f"{k}={v}" for k, v in WEIGHTS.items()),
         "Based only on public YouTube Data API v3 fields; CTR, impression counts and audience retention are private Analytics metrics that do not exist in public data.",
+        "Thresholds (e.g. 5% like/view cap, 30-day recency window, 35%/60% concentration bands) are internal heuristics — NOT official YouTube standards.",
+        "The score is a relative self-assessment against the channel's own history plus soft fixed caps; it is not comparable across different channels.",
+        "No statistical significance testing is performed; small samples reduce which components can be scored at all.",
     ]
     if not comps:
         return HealthScore(None, "insufficient-data", [], "weighted mean of available components (renormalized weights)",
@@ -760,6 +822,25 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         notes.append(f"{perf.hidden_stats_videos} video(s) hide like AND comment counts.")
     notes.append("Analysis window: latest "
                  f"{min(cfg.analyze_limit, perf.videos_analyzed)} synced videos (of {channel.video_count or 'unknown'} total on channel).")
+    notes.append("Format labels are duration-based ESTIMATES ('estimated-shorts'/'estimated-longform'); "
+                 "YouTube's Data API does not expose an official Shorts flag.")
+    notes.append("Topic groups are repeated title WORDS (lexical), not semantic topics.")
+
+    # ---- data freshness / staleness (provenance requirement) ----
+    sync_times = [r.last_synced_at for r in rows if r.last_synced_at]
+    last_video_sync = max(sync_times) if sync_times else _aware(channel.last_synced_at)
+    stats_age_days = (now - last_video_sync).days if last_video_sync else None
+    freshness: dict[str, Any] = {
+        "last_video_stats_sync": last_video_sync.isoformat() if last_video_sync else None,
+        "stats_age_days": stats_age_days,
+        "sample_size_analyzed": perf.videos_analyzed,
+        "stale_data": bool(stats_age_days is not None and stats_age_days > 7),
+    }
+    if freshness["stale_data"]:
+        notes.append(f"Video statistics are {stats_age_days} days old (last sync {last_video_sync:%Y-%m-%d}); "
+                     "re-sync before relying on recent-performance findings.")
+    elif last_video_sync is None:
+        notes.append("No recorded sync timestamp; video statistics may be outdated.")
 
     ranked_desc = sorted(rows, key=lambda r: -r.views_per_day)
     return ChannelAudit(
@@ -774,10 +855,19 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         health_score=score,
         findings=findings,
         top_performers=ranked_desc[:10],
-        underperformers=[r for r in ranked_desc if r.vs_baseline_pct is not None and r.vs_baseline_pct < -40][-10:],
+        # Underperformance requires >=7 days of observation AND a computable
+        # baseline. Fresh uploads are excluded rather than labelled failures.
+        underperformers=[
+            r for r in ranked_desc
+            if r.vs_baseline_pct is not None and r.vs_baseline_pct < -40 and r.age_days >= 7
+        ][-10:],
         outliers=outliers,
         strong_topics=strong,
         weak_topics=weak,
         insufficient_data=insufficient,
         notes=notes,
+        provenance=dict(PROVENANCE_LABELS),
+        unavailable_metrics=list(UNAVAILABLE_METRICS),
+        confidence_rules=dict(CONFIDENCE_RULES),
+        data_freshness=freshness,
     )
