@@ -111,7 +111,12 @@ export function deleteChannel(id: number): Promise<void> {
   return request<void>(`/channels/${id}`, { method: "DELETE" });
 }
 
-/** GET /api/v1/channels/{id}/audit — Phase-2 rule-based audit. Pure DB reads, zero quota. */
+/** GET /api/v1/channels/{id}/audit — Phase-2 rule-based audit. Read-only, zero quota. */
 export function getChannelAudit(id: number, limit = 50): Promise<ChannelAudit> {
   return request<ChannelAudit>(`/channels/${id}/audit?limit=${limit}`);
+}
+
+/** POST /api/v1/channels/{id}/audit — explicit re-run; records one history row. */
+export function runChannelAudit(id: number, limit = 50): Promise<ChannelAudit> {
+  return request<ChannelAudit>(`/channels/${id}/audit?limit=${limit}`, { method: "POST" });
 }

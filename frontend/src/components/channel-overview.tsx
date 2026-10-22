@@ -62,6 +62,7 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
     mutationFn: () => syncChannel(ch.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overview", ch.id] });
+      queryClient.invalidateQueries({ queryKey: ["audit", ch.id] });
       queryClient.invalidateQueries({ queryKey: ["channels"] });
     },
   });

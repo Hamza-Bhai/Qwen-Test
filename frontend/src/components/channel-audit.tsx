@@ -5,8 +5,8 @@
 // is hardcoded or mocked. Charts use recharts (already installed).
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -28,7 +28,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { getChannelAudit } from "@/lib/api";
+import { getChannelAudit, runChannelAudit } from "@/lib/api";
 import {
   formatCompact,
   formatDate,
@@ -354,10 +354,18 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export function ChannelAuditView({ channelId }: { channelId: number }) {
-  const [refreshKey, setRefreshKey] = useState(0);
-  const { data, isPending, isError, error } = useQuery({
-    queryKey: ["audit", channelId, refreshKey],
+  const queryClient = useQueryClient();
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ["audit", channelId],
     queryFn: () => getChannelAudit(channelId),
+  });
+  // Explicit re-run: POST records exactly one 'audit' history row.
+  const rerun = useMutation({
+    mutationFn: () => runChannelAudit(channelId),
+    onSuccess: (fresh) => {
+      queryClient.setQueryData(["audit", channelId], fresh);
+      queryClient.invalidateQueries({ queryKey: ["overview", channelId] });
+    },
   });
 
   if (isPending) {
@@ -379,7 +387,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
     return (
       <div className="space-y-3 pt-10">
         <ErrorMessage error={error} />
-        <Button variant="outline" size="sm" onClick={() => setRefreshKey((k) => k + 1)}>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Retry audit
         </Button>
       </div>
@@ -416,10 +424,13 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
             quota used
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setRefreshKey((k) => k + 1)}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Re-run audit
+        <Button variant="outline" size="sm" onClick={() => rerun.mutate()} disabled={rerun.isPending}>
+          <RefreshCw className={`mr-1.5 h-3.5 w-3.5${rerun.isPending ? " animate-spin" : ""}`} aria-hidden="true" />
+          {rerun.isPending ? "Re-running…" : "Re-run audit"}
         </Button>
       </div>
+
+      {rerun.isError && <ErrorMessage error={rerun.error} />}
 
       {audit.insufficient_data && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">

@@ -99,14 +99,26 @@ class TestAuditEndpoint:
         assert hs["score"] is None or 0 <= hs["score"] <= 100
         assert any("excludes components lacking data" in c for c in hs["caveats"])
 
-    def test_audit_persists_history_row(self, client, analyzed):
+    def test_get_audit_is_read_only(self, client, analyzed):
         cid = analyzed["channel"]["id"]
+        before = client.get(f"/api/v1/channels/{cid}/overview").json()["history"]
         client.get(f"/api/v1/channels/{cid}/audit")
-        ov = client.get(f"/api/v1/channels/{cid}/overview").json()
-        triggers = [h["trigger"] for h in ov["history"]]
-        assert "audit" in triggers
-        audit_row = next(h for h in ov["history"] if h["trigger"] == "audit")
-        assert audit_row["quota_units_used"] == 0
+        client.get(f"/api/v1/channels/{cid}/audit?persist=true")  # legacy param is ignored
+        after = client.get(f"/api/v1/channels/{cid}/overview").json()["history"]
+        assert after == before
+
+    def test_rerun_audit_records_exactly_one_row(self, client, analyzed):
+        cid = analyzed["channel"]["id"]
+        resp = client.post(f"/api/v1/channels/{cid}/audit")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["youtube_channel_id"] == CHANNEL_ITEM["id"]
+        history = client.get(f"/api/v1/channels/{cid}/overview").json()["history"]
+        audit_rows = [h for h in history if h["trigger"] == "audit"]
+        assert len(audit_rows) == 1
+        assert audit_rows[0]["quota_units_used"] == 0
+
+    def test_rerun_audit_unknown_channel_404(self, client):
+        assert client.post("/api/v1/channels/999999/audit").status_code == 404
 
     def test_no_public_metrics_claimed(self, client, analyzed):
         body = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/audit").json()

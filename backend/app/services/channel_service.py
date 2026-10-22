@@ -181,19 +181,15 @@ def delete_channel(db: Session, channel: Channel) -> None:
     db.commit()
 
 
-def analyze_channel(db: Session, identifier: str) -> tuple[Channel, dict]:
-    """Full Phase-1 'Analyze' flow: parse URL -> resolve via API -> sync videos
-    -> store a ChannelAnalysis history row. Returns (channel, detail)."""
+def _record_history(db: Session, channel: Channel, trigger: str, detail: dict) -> ChannelAnalysis:
+    """One ChannelAnalysis row for one explicit user action (analyze / sync)."""
     from dataclasses import asdict
     from app.analytics.metrics import summarize_channel
 
-    channel = add_channel(db, identifier)  # upserts fresh stats from the API
-    detail = sync_channel(db, channel)
     summary = summarize_channel(db, channel)
-
     run = ChannelAnalysis(
         channel_id=channel.id,
-        trigger="analyze",
+        trigger=trigger,
         subscriber_count=channel.subscriber_count,
         video_count=channel.video_count,
         view_count=channel.view_count,
@@ -204,7 +200,24 @@ def analyze_channel(db: Session, identifier: str) -> tuple[Channel, dict]:
     db.add(run)
     db.commit()
     db.refresh(run)
+    return run
+
+
+def analyze_channel(db: Session, identifier: str) -> tuple[Channel, dict]:
+    """Full Phase-1 'Analyze' flow: parse URL -> resolve via API -> sync videos
+    -> store one 'analyze' history row. Returns (channel, detail)."""
+    channel = add_channel(db, identifier)  # upserts fresh stats from the API
+    detail = sync_channel(db, channel)
+    run = _record_history(db, channel, "analyze", detail)
     return channel, {**detail, "analysis_id": run.id}
+
+
+def sync_channel_by_user(db: Session, channel: Channel) -> dict:
+    """Explicit 'Sync' button: refresh data and store one 'sync' history row.
+    Scheduled syncs call sync_channel directly and are logged as JobRuns."""
+    detail = sync_channel(db, channel)
+    run = _record_history(db, channel, "sync", detail)
+    return {**detail, "analysis_id": run.id}
 
 
 def list_analyses(db: Session, channel_pk: int, *, limit: int = 50) -> list[ChannelAnalysis]:

@@ -129,10 +129,9 @@ def channel_overview(channel_id: int, db: Session = Depends(get_db)):
 def channel_audit(
     channel_id: int,
     limit: int = Query(default=50, ge=1, le=200),
-    persist: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
-    """Phase-2 rule-based channel audit.
+    """Phase-2 rule-based channel audit. Read-only: never writes history.
 
     Pure DB reads — zero YouTube quota. Every finding ships with evidence,
     confidence and data limitations; insufficient data => 'inconclusive'.
@@ -140,7 +139,20 @@ def channel_audit(
     channel = channel_service.get_channel_by_pk(db, channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
-    return audit_service.audit_channel(db, channel, limit=limit, persist=persist)
+    return audit_service.audit_channel(db, channel, limit=limit)
+
+
+@router.post("/{channel_id}/audit", response_model=ChannelAuditRead)
+def rerun_channel_audit(
+    channel_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Explicit 'Re-run audit' action: same audit, plus one 'audit' history row."""
+    channel = channel_service.get_channel_by_pk(db, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return audit_service.audit_channel(db, channel, limit=limit, persist=True)
 
 
 @router.get("/{channel_id}", response_model=ChannelRead)
@@ -187,7 +199,7 @@ async def sync_channel(channel_id: int, db: Session = Depends(get_db)):
         existing = channel_service.get_channel_by_pk(db, channel_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="Channel not found")
-        detail = await asyncio.to_thread(channel_service.sync_channel, db, existing)
+        detail = await asyncio.to_thread(channel_service.sync_channel_by_user, db, existing)
     except HTTPException:
         raise
     except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:

@@ -1,8 +1,8 @@
 """Thin service layer for the Phase-2 audit endpoint.
 
 Routes stay minimal; all math lives in ``app.analytics.audit``. Audits read
-only stored records (no YouTube calls, zero quota) and persist a snapshot into
-the existing ``channel_analyses.summary`` JSON column — no schema change needed.
+only stored records (no YouTube calls, zero quota). Only an explicit
+"Re-run audit" (persist=True) stores a snapshot in ``channel_analyses``.
 """
 
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from app.db.models import Channel, ChannelAnalysis
 
 
 def audit_channel(db: Session, channel: Channel, *, limit: int | None = None,
-                  persist: bool = True) -> ChannelAudit:
+                  persist: bool = False) -> ChannelAudit:
     cfg = AuditConfig() if limit is None else AuditConfig(analyze_limit=limit)
     audit = run_channel_audit(db, channel, cfg)
     if persist:

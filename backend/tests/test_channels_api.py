@@ -156,6 +156,14 @@ class TestChannelCrudAndOverview:
         assert ov["summary"]["videos_analyzed"] == 1
         assert ov["summary"]["total_views"] == 1234567
         assert ov["recent_videos"][0]["title"] == "Cool Tech Video"
+        # Exactly one history row for the one explicit sync action.
+        assert [h["trigger"] for h in ov["history"]] == ["sync"]
+        assert ov["history"][0]["videos_synced"] == 1
+
+    def test_analyze_records_only_one_analyze_row(self, client, monkeypatch):
+        make_fake_get(monkeypatch)
+        body = client.post("/api/v1/channels/analyze", json={"identifier": "@mkbhd"}).json()
+        assert [h["trigger"] for h in body["history"]] == ["analyze"]
 
 
 class TestQuotaAndCache:
