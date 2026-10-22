@@ -2,8 +2,30 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import {
+  CalendarDays,
+  Globe,
+  Loader2,
+  MapPin,
+  PlaySquare,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ErrorMessage } from "@/components/error-message";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { syncChannel } from "@/lib/api";
+import {
+  countryName,
+  formatCompact,
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  formatNumber,
+  formatRatio,
+} from "@/lib/format";
+import type { ChannelOverview } from "@/lib/types";
 
 function StatTile({
   icon,
@@ -32,7 +54,7 @@ function StatTile({
   );
 }
 
-export function ChannelOverviewView({ overview }: { overview: Overview }) {
+export function ChannelOverviewView({ overview }: { overview: ChannelOverview }) {
   const queryClient = useQueryClient();
   const ch = overview.channel;
   const sync = useMutation({
