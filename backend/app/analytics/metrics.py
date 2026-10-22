@@ -15,7 +15,7 @@ from statistics import mean
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, Video
+from app.db.models import Channel, Video, analyzable_video_filter
 
 
 @dataclass
@@ -34,7 +34,7 @@ class ChannelSummary:
 
 def summarize_channel(db: Session, channel: Channel) -> ChannelSummary:
     videos = db.execute(
-        select(Video).where(Video.channel_id == channel.id)
+        select(Video).where(Video.channel_id == channel.id, analyzable_video_filter())
     ).scalars().all()
 
     views = [v.view_count for v in videos if v.view_count is not None]

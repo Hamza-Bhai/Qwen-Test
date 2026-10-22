@@ -16,7 +16,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 3 | P0 | No auth / rate limit on mutating endpoints | ☐ |
 | 4 | P1 | Same keyword in Strong AND Weak topics | ✅ |
 | 5 | P1 | Fresh videos leak into format split & concentration | ✅ |
-| 6 | P1 | Upcoming premieres / live streams not filtered | ☐ |
+| 6 | P1 | Upcoming premieres / live streams not filtered | ✅ |
 | 7 | P1 | Analysis limited to latest 50 videos | ☐ |
 | 8 | P1 | Shorts and long-form share one baseline | ☐ |
 | 9 | P1 | Health score does not measure views | ☐ |
@@ -97,7 +97,11 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Fix:** use mature videos (≥ 7 days) only; inconclusive if not enough.
 - **Test:** all-fresh video set → format_split and concentration are `inconclusive`.
 
-## 6. [P1] Upcoming premieres / live streams not filtered
+## 6. [P1] Upcoming premieres / live streams not filtered — ✅ fixed
+
+- **Done:** `videos.live_broadcast_content` (migration `c4a8e1d2f5b6`); `upcoming` / `live` excluded from
+  audit and overview summary, and skipped by the Shorts check. Existing rows are NULL (= included)
+  until the next sync fills the value.
 
 - **Where:** [backend/app/services/youtube.py](backend/app/services/youtube.py) `video_payload_to_fields` ignores `snippet.liveBroadcastContent`.
 - **Impact (from code):** scheduled premieres have 0 views and duration `P0D` = 0 s →

@@ -255,6 +255,7 @@ def video_payload_to_fields(item: dict) -> dict:
         "description": snippet.get("description"),
         "thumbnail_url": thumb.get("url") if thumb else None,
         "published_at": snippet.get("publishedAt"),
+        "live_broadcast_content": snippet.get("liveBroadcastContent"),
         "duration_seconds": parse_iso8601_duration(content.get("duration")),
         # contentDimension is a public field ("WxH"); parsed defensively so a
         # missing/malformed value stays None instead of crashing the sync.

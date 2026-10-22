@@ -85,6 +85,8 @@ def _resolve_shorts(videos: list[Video]) -> None:
     format never changes, so a known answer is kept)."""
     to_check = []
     for video in videos:
+        if video.live_broadcast_content not in (None, "none"):
+            continue  # premiere / live: not analyzed, re-checked once it ends
         if video.duration_seconds is not None and video.duration_seconds > SHORTS_MAX_SECONDS:
             video.is_short = False
         elif video.is_short is None:
@@ -132,6 +134,7 @@ def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dic
             video.thumbnail_url = vf["thumbnail_url"]
             video.published_at = _parse_dt(vf["published_at"])
             video.duration_seconds = vf["duration_seconds"]
+            video.live_broadcast_content = vf["live_broadcast_content"]
             video.content_width = vf["content_width"]
             video.content_height = vf["content_height"]
             video.tags = vf["tags"]

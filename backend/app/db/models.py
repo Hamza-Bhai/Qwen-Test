@@ -15,6 +15,7 @@ Design notes
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    or_,
     JSON,
     Boolean,
     Date,
@@ -97,6 +98,9 @@ class Video(Base):
     # Result of the youtube.com/shorts/<id> check (True = Short, False =
     # regular video, NULL = not checked / check failed -> duration fallback).
     is_short: Mapped[bool | None] = mapped_column(Boolean)
+    # snippet.liveBroadcastContent: "none" | "upcoming" | "live". Only "none"
+    # (or NULL for rows synced before this column existed) has settled stats.
+    live_broadcast_content: Mapped[str | None] = mapped_column(String(16))
     tags: Mapped[list | None] = mapped_column(JSON)
     category_id: Mapped[str | None] = mapped_column(String(16))
     # Public statistics only. Private analytics (CTR, retention, revenue)
@@ -110,6 +114,12 @@ class Video(Base):
     channel: Mapped["Channel"] = relationship(back_populates="videos")
 
     __table_args__ = (Index("ix_videos_channel_published", "channel_id", "published_at"),)
+
+
+def analyzable_video_filter():
+    """SQL filter excluding scheduled premieres and ongoing live streams, which
+    have no settled stats (0 views, duration P0D) and would skew analysis."""
+    return or_(Video.live_broadcast_content.is_(None), Video.live_broadcast_content == "none")
 
 
 class ApiCache(Base):

@@ -48,7 +48,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, Video
+from app.db.models import Channel, Video, analyzable_video_filter
 from app.services.youtube import SHORTS_MAX_SECONDS
 
 # --------------------------------------------------------------------- config
@@ -1035,7 +1035,7 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
     videos = list(
         db.execute(
             select(Video)
-            .where(Video.channel_id == channel.id)
+            .where(Video.channel_id == channel.id, analyzable_video_filter())
             .order_by(Video.published_at.desc())
             .limit(cfg.analyze_limit)
         ).scalars().all()

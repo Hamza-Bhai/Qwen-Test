@@ -222,15 +222,21 @@ class TestResolveShorts:
         checked = []
         monkeypatch.setattr(channel_service, "check_is_short",
                             lambda vid, http: checked.append(vid) or vid == "short")
-        long_v = SimpleNamespace(youtube_video_id="long", duration_seconds=240, is_short=None)
-        known = SimpleNamespace(youtube_video_id="known", duration_seconds=50, is_short=False)
-        short = SimpleNamespace(youtube_video_id="short", duration_seconds=50, is_short=None)
-        regular = SimpleNamespace(youtube_video_id="regular", duration_seconds=90, is_short=None)
+        def video(vid, duration, is_short=None, live="none"):
+            return SimpleNamespace(youtube_video_id=vid, duration_seconds=duration,
+                                   is_short=is_short, live_broadcast_content=live)
 
-        channel_service._resolve_shorts([long_v, known, short, regular])
+        long_v = video("long", 240)
+        known = video("known", 50, is_short=False)
+        short = video("short", 50)
+        regular = video("regular", 90)
+        premiere = video("premiere", 0, live="upcoming")
+
+        channel_service._resolve_shorts([long_v, known, short, regular, premiere])
 
         assert sorted(checked) == ["regular", "short"]
         assert (long_v.is_short, known.is_short, short.is_short, regular.is_short) == (False, False, True, False)
+        assert premiere.is_short is None
 
 
 class TestApiKeyNotLeaked:
@@ -251,3 +257,46 @@ class TestApiKeyNotLeaked:
         import app.main  # noqa: F401 - configures logging on import
 
         assert logging.getLogger("httpx").level >= logging.WARNING
+
+
+class TestUpcomingAndLiveExcluded:
+    """Issue #6: scheduled premieres / ongoing live streams have no settled
+    stats (0 views, duration P0D) and must not enter any analysis."""
+
+    @staticmethod
+    def _install_payloads(monkeypatch):
+        import copy
+
+        from tests import conftest
+
+        normal = conftest.VIDEOS_LIST["items"][0]
+        upcoming = copy.deepcopy(normal)
+        upcoming["id"] = "AAAAAAAAAA2"
+        upcoming["snippet"]["title"] = "Premiere tomorrow"
+        upcoming["snippet"]["liveBroadcastContent"] = "upcoming"
+        upcoming["statistics"] = {"viewCount": "0"}
+        upcoming["contentDetails"] = {"duration": "P0D"}
+        live = copy.deepcopy(upcoming)
+        live["id"] = "AAAAAAAAAA3"
+        live["snippet"]["liveBroadcastContent"] = "live"
+        monkeypatch.setattr(conftest, "VIDEOS_LIST", {"items": [normal, upcoming, live]})
+        monkeypatch.setattr(conftest, "PLAYLIST_ITEMS", {"items": [
+            {"contentDetails": {"videoId": vid}} for vid in ("AAAAAAAAAA1", "AAAAAAAAAA2", "AAAAAAAAAA3")
+        ]})
+
+    def test_live_broadcast_content_is_parsed(self):
+        from app.services.youtube import video_payload_to_fields
+
+        item = {"id": "x", "snippet": {"liveBroadcastContent": "upcoming"}}
+        assert video_payload_to_fields(item)["live_broadcast_content"] == "upcoming"
+
+    def test_overview_and_audit_ignore_upcoming_and_live(self, client, monkeypatch):
+        self._install_payloads(monkeypatch)
+        make_fake_get(monkeypatch)
+        body = client.post("/api/v1/channels/analyze", json={"identifier": "@mkbhd"}).json()
+        assert body["summary"]["videos_analyzed"] == 1
+        assert body["summary"]["total_views"] == 1234567
+
+        audit = client.get(f"/api/v1/channels/{body['channel']['id']}/audit").json()
+        assert audit["performance"]["videos_analyzed"] == 1
+        assert audit["performance"]["shorts_count"] == 0
