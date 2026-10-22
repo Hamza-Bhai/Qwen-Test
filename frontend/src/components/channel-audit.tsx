@@ -311,7 +311,11 @@ function RankingCard({
 
 function TopicList({ topics, kind }: { topics: AuditTopicGroup[]; kind: "strong" | "weak" }) {
   if (topics.length === 0) {
-    return <p className="py-4 text-center text-sm text-muted-foreground">No qualifying {kind}-topic groups.</p>;
+    return (
+      <p className="py-4 text-center text-sm text-muted-foreground">
+        No repeated title keyword is {kind === "strong" ? "20%+ above" : "20%+ below"} the channel baseline.
+      </p>
+    );
   }
   return (
     <ul className="space-y-3">
@@ -841,8 +845,8 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
               <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Recurring strong title keywords
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Words repeated across video titles with above-baseline median views/day — lexical grouping, not a
-              semantic-topic verdict.
+              Words in 3+ titles whose median views/day is at least 20% above the channel baseline — lexical
+              grouping, not a semantic-topic verdict.
             </p>
           </CardHeader>
           <CardContent>
@@ -855,7 +859,8 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
               <TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" /> Consistently weak title keywords
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Words repeated in underperforming titles; ambiguous words and synonyms are not distinguished.
+              Words in 3+ titles whose median views/day is at least 20% below the channel baseline; ambiguous
+              words and synonyms are not distinguished.
             </p>
           </CardHeader>
           <CardContent>

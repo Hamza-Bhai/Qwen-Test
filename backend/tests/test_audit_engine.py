@@ -237,6 +237,34 @@ class TestTopicGrouping:
         strong, weak = group_topics(rows, baseline=55.0)
         assert all(g.topic != "quantum" for g in strong + weak)
 
+    @staticmethod
+    def _three_groups():
+        # drone ≈ +83%, cooking ≈ -67%, travel ≈ +3% vs a baseline of 30.
+        specs = [("drone", (50, 55, 60)), ("cooking", (8, 10, 12)), ("travel", (30, 31, 32))]
+        rows = []
+        for word, vpds in specs:
+            for i, vpd in enumerate(vpds):
+                r = _rank(f"{word}{i}", vpd)
+                r.title = f"{word} episode {i}"
+                rows.append(r)
+        return rows
+
+    def test_strong_and_weak_are_disjoint_and_signed(self):
+        strong, weak = group_topics(self._three_groups(), baseline=30.0)
+        assert [g.topic for g in strong] == ["drone"]
+        assert [g.topic for g in weak] == ["cooking"]
+        assert not {g.topic for g in strong} & {g.topic for g in weak}
+        assert all(g.vs_channel_baseline_pct > 0 for g in strong)
+        assert all(g.vs_channel_baseline_pct < 0 for g in weak)
+
+    def test_near_baseline_topic_is_neither(self):
+        strong, weak = group_topics(self._three_groups(), baseline=30.0)
+        assert all(g.topic != "travel" for g in strong + weak)
+
+    def test_no_baseline_means_no_strong_or_weak_claims(self):
+        strong, weak = group_topics(self._three_groups(), baseline=None)
+        assert strong == [] and weak == []
+
 
 # ---------------------------------------------------------------- health score
 class TestHealthScore:

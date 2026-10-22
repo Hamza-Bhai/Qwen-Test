@@ -60,6 +60,8 @@ STALE_UPLOAD_DAYS = 60              # gap threshold for "long publishing pause"
 CONCENTRATION_HIGH = 0.60           # top-5 share above which dependence flagged
 OUTLIER_IQR_K = 3.0                 # Tukey-fence multiplier for vpd outliers
 TOPIC_TOKEN_MIN_LEN = 4             # ignore tiny words when grouping topics
+TOPIC_MIN_DIFF_PCT = 20.0           # keyword must beat/trail the baseline by
+                                    # >= 20% to be listed as strong/weak
 MIN_AGE_DAYS_FOR_RANKING = 7        # videos younger than this have provisional
                                     # traction only (excluded from top/under/outliers)
 MIN_OBSERVATION_SPAN_DAYS = 30      # below this span, monthly cadence is not a
@@ -103,6 +105,7 @@ FORMULAS: dict[str, str] = {
     "top5_share_of_views": "sum(views of top-5 videos by view_count) / total_views",
     "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
     "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
+    "topic_groups": f"title words (>= {TOPIC_TOKEN_MIN_LEN} chars, not stopwords) shared by >= 3 MATURE videos; median views/day vs the channel baseline. Strong = >= +{TOPIC_MIN_DIFF_PCT:.0f}%, weak = <= -{TOPIC_MIN_DIFF_PCT:.0f}%; words in between are listed in neither",
     "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
     "format_split": f"median views/day per estimated format group; needs >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
 }
@@ -543,8 +546,15 @@ def group_topics(rows: list[VideoRanking], baseline: float | None) -> tuple[list
                 example_titles=[v.title for v in sorted(vids, key=lambda x: -x.views_per_day)[:3]],
             )
         )
-    strong = sorted((g for g in scored if g.videos >= 3), key=lambda g: -(g.median_views_per_day))[:5]
-    weak = sorted((g for g in scored if g.videos >= 3), key=lambda g: g.median_views_per_day)[:5]
+    # A keyword is "strong"/"weak" only when it is clearly above/below the
+    # baseline, so the lists are disjoint and a below-baseline word can never
+    # be shown as strong. No baseline => no claim either way.
+    strong = sorted((g for g in scored if g.vs_channel_baseline_pct is not None
+                     and g.vs_channel_baseline_pct >= TOPIC_MIN_DIFF_PCT),
+                    key=lambda g: -g.median_views_per_day)[:5]
+    weak = sorted((g for g in scored if g.vs_channel_baseline_pct is not None
+                   and g.vs_channel_baseline_pct <= -TOPIC_MIN_DIFF_PCT),
+                  key=lambda g: g.median_views_per_day)[:5]
     return strong, weak
 
 

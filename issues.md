@@ -14,7 +14,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 1 | P0 | YouTube API key written to logs | ✅ `6301d2c` |
 | 2 | P0 | GET `/audit` writes history rows (duplicates) | ✅ `0a83ba1` |
 | 3 | P0 | No auth / rate limit on mutating endpoints | ☐ |
-| 4 | P1 | Same keyword in Strong AND Weak topics | ☐ |
+| 4 | P1 | Same keyword in Strong AND Weak topics | ✅ |
 | 5 | P1 | Fresh videos leak into format split & concentration | ☐ |
 | 6 | P1 | Upcoming premieres / live streams not filtered | ☐ |
 | 7 | P1 | Analysis limited to latest 50 videos | ☐ |
@@ -54,7 +54,8 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 
 - **Done:** GET is read-only; `POST /audit` (Re-run) → one `audit` row; `POST /sync` → one `sync` row;
   Analyze → one `analyze` row. Scheduled syncs log JobRuns only.
-- **Leftover:** 24 old duplicate `audit` rows still in the local DB (not deleted).
+- **Leftover:** 24 old duplicate `audit` rows still in the local DB — deletion was blocked by the
+  permission guard; run the cleanup command manually (see chat).
 
 - **Where:** [backend/app/api/routes/channels.py:131](backend/app/api/routes/channels.py#L131) (`persist=True` default),
   [backend/app/services/audit_service.py](backend/app/services/audit_service.py).
@@ -72,7 +73,10 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Fix:** before SaaS — user auth, per-user ownership checks (`owner_id` already exists), rate limiting.
 - **Test:** unauthenticated requests rejected; user A cannot touch user B's channel.
 
-## 4. [P1] Same keyword in Strong AND Weak topics
+## 4. [P1] Same keyword in Strong AND Weak topics — ✅ fixed
+
+- **Done:** strong = ≥ +20% vs baseline, weak = ≤ −20%; lists disjoint; no baseline → both empty.
+  AXIOM now: strong none, weak `sunday` (−89.9%), `protect` (−74.8%); `rest` (+4.2%) in neither.
 
 - **Where:** [backend/app/analytics/audit.py:546-547](backend/app/analytics/audit.py#L546-L547) — both lists are top-5/bottom-5 of the same `scored` list.
 - **Evidence (AXIOM):** Strong = `rest (+4.2%)`, `protect (−74.8%)`, `sunday (−89.9%)`;
