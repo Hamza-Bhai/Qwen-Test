@@ -14,13 +14,14 @@ from app.analytics.metrics import summarize_channel
 from app.db.session import get_db
 from app.schemas.channel import (
     ChannelAnalysisRead,
+    ChannelAuditRead,
     ChannelCreate,
     ChannelOverview,
     ChannelRead,
     SyncResult,
     VideoRead,
 )
-from app.services import channel_service
+from app.services import audit_service, channel_service
 from app.services.quota import QuotaExceededError
 from app.services.url_resolver import UnsupportedURLError
 from app.services.youtube import YouTubeAPIError
@@ -122,6 +123,24 @@ def channel_overview(channel_id: int, db: Session = Depends(get_db)):
             for a in channel_service.list_analyses(db, channel_id)
         ],
     )
+
+
+@router.get("/{channel_id}/audit", response_model=ChannelAuditRead)
+def channel_audit(
+    channel_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    persist: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
+    """Phase-2 rule-based channel audit.
+
+    Pure DB reads — zero YouTube quota. Every finding ships with evidence,
+    confidence and data limitations; insufficient data => 'inconclusive'.
+    """
+    channel = channel_service.get_channel_by_pk(db, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return audit_service.audit_channel(db, channel, limit=limit, persist=persist)
 
 
 @router.get("/{channel_id}", response_model=ChannelRead)

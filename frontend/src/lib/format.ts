@@ -59,3 +59,19 @@ export function countryName(code: string | null | undefined): string {
   if (!code) return "—";
   return COUNTRY_NAMES[code.toUpperCase()] ?? code;
 }
+
+/** Signed percentage for baseline comparisons, e.g. +12.3% / -8.1%. */
+export function formatPct(p: number | null | undefined, digits = 1): string {
+  if (p === null || p === undefined || Number.isNaN(p)) return "—";
+  const sign = p > 0 ? "+" : "";
+  return `${sign}${p.toFixed(digits)}%`;
+}
+
+/** Plain decimal to one place (views/day, uploads/month). */
+export function formatDecimal(n: number | null | undefined, digits = 1): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
