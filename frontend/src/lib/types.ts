@@ -82,7 +82,12 @@ export interface AuditVideoRanking {
   age_days: number;
   views_per_day: number;
   vs_baseline_pct: number | null;
-  form: string; // "shorts" | "longform" | "unknown"
+  // Backend emits "estimated-shorts" | "estimated-longform" | "unknown".
+  // Legacy persisted audits may still contain "shorts" | "long".
+  form: string;
+  /** False for uploads under the maturity window (or undated): their
+   *  views/day is provisional early traction, not settled performance. */
+  mature: boolean;
 }
 
 export interface AuditTopicGroup {
@@ -121,6 +126,11 @@ export interface AuditPerformance {
   comments_available_on: number;
   hidden_stats_videos: number;
   uploads_per_month: number | null;
+  /** Actual span of the analyzed publication window in days. */
+  observed_span_days: number | null;
+  /** True only when the observation window is long enough for a defensible
+   *  monthly rate; false means uploads_per_month must NOT be shown as a rate. */
+  cadence_reliable: boolean;
   days_since_last_upload: number | null;
   first_published_at: string | null;
   last_published_at: string | null;
@@ -140,9 +150,13 @@ export interface AuditPerformance {
 
 export interface AuditHealthComponent {
   name: string;
-  weight: number;
-  score: number;
+  /** Null on informational entries such as the "coverage" row. */
+  weight: number | null;
+  /** Null when the component was excluded for lack of data. */
+  score: number | null;
   note: string;
+  /** Present (true) when the component lacks data and was excluded from scoring. */
+  excluded?: boolean;
 }
 
 export interface AuditHealthScore {
@@ -167,6 +181,9 @@ export interface ChannelAudit {
   top_performers: AuditVideoRanking[];
   underperformers: AuditVideoRanking[];
   outliers: AuditVideoRanking[];
+  /** Uploads too young (or undated) for mature rankings — provisional early
+   *  traction only. Optional for backward compatibility with older responses. */
+  fresh_videos_provisional?: AuditVideoRanking[];
   strong_topics: AuditTopicGroup[];
   weak_topics: AuditTopicGroup[];
   insufficient_data: boolean;

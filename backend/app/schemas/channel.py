@@ -97,6 +97,7 @@ class AuditVideoRanking(BaseModel):
     views_per_day: float
     vs_baseline_pct: float | None = None
     form: str
+    mature: bool = True
 
 
 class AuditTopicGroup(BaseModel):
@@ -135,6 +136,8 @@ class AuditPerformance(BaseModel):
     comments_available_on: int
     hidden_stats_videos: int
     uploads_per_month: float | None = None
+    observed_span_days: int | None = None
+    cadence_reliable: bool = False
     days_since_last_upload: int | None = None
     first_published_at: datetime | None = None
     last_published_at: datetime | None = None
@@ -176,6 +179,7 @@ class ChannelAuditRead(BaseModel):
     top_performers: list[AuditVideoRanking]
     underperformers: list[AuditVideoRanking]
     outliers: list[AuditVideoRanking]
+    fresh_videos_provisional: list[AuditVideoRanking] = []
     strong_topics: list[AuditTopicGroup]
     weak_topics: list[AuditTopicGroup]
     insufficient_data: bool

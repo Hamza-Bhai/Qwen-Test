@@ -251,7 +251,12 @@ function VideoRow({ video, baselineLabel }: { video: AuditVideoRanking; baseline
           className="line-clamp-1 text-sm font-medium hover:underline"
         >
           {video.title}
-        </a>
+        </a>{" "}
+        {!video.mature && (
+          <Badge variant="outline" className="mt-0.5 align-middle text-[10px]" title="Published under the maturity window (or undated): views/day is provisional early traction, not a settled performance rate.">
+            provisional
+          </Badge>
+        )}
         <p className="mt-0.5 text-xs text-muted-foreground">
           {formatDate(video.published_at)} · {video.age_days}d old · {formatDuration(video.duration_seconds)} ·{" "}
           <span title="Format is estimated from video duration; YouTube's public API has no official Shorts flag.">
@@ -455,24 +460,49 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
             ) : (
               <>
                 <ScoreGauge score={hs.score} band={hs.band} />
+                {hs.caveats.some((c) => c.startsWith("PROVISIONAL SCORE") || c.startsWith("PARTIAL COVERAGE")) && (
+                  <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    This score is based on partial data only — see the coverage figure and caveats below. It is not a
+                    comprehensive channel assessment.
+                  </p>
+                )}
                 <ul className="space-y-2 pt-4">
-                  {hs.components.map((c) => (
-                    <li key={c.name} className="text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="capitalize">{c.name.replace(/_/g, " ")}</span>
-                        <span className="tabular-nums text-muted-foreground">
-                          {formatNumber(c.score)} · weight {c.weight}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${Math.max(0, Math.min(100, c.score))}%` }}
-                        />
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
-                    </li>
-                  ))}
+                  {hs.components.map((c) => {
+                    // Excluded / unscored components (e.g. consistency over a
+                    // short observation window) are shown honestly as excluded —
+                    // never rendered as a zero-width bar that implies "score 0".
+                    const isCoverage = c.name === "coverage";
+                    const unscored = c.excluded === true || c.score === null;
+                    return (
+                      <li key={c.name} className="text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="capitalize">
+                            {c.name.replace(/_/g, " ")}
+                            {isCoverage && <Badge variant="outline" className="ml-2 align-middle normal-case">score coverage</Badge>}
+                          </span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {unscored && !isCoverage
+                              ? "excluded from score"
+                              : `${formatNumber(c.score)}${isCoverage ? "%" : ""}${
+                                  c.weight !== null && c.weight !== undefined ? ` · weight ${c.weight}` : ""
+                                }`}
+                          </span>
+                        </div>
+                        {!isCoverage && (
+                          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                            {!unscored && (
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${Math.max(0, Math.min(100, c.score ?? 0))}%` }}
+                              />
+                            )}
+                          </div>
+                        )}
+                        <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
@@ -537,6 +567,12 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
                     <Badge variant="outline">{f.kind === "fact" ? "measured fact" : "heuristic"}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{f.explanation}</p>
+                  {f.key === "recent_trend" && f.status === "inconclusive" && (
+                    <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                      No verdict on recent momentum: the backend could not compare independent cohorts, so this is NOT
+                      reported as “stable”, “growing” or “declining”.
+                    </p>
+                  )}
                   <EvidenceList evidence={f.evidence} />
                   {f.data_limitations.length > 0 && (
                     <p className="mt-1.5 text-xs text-muted-foreground">
@@ -569,19 +605,48 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           value={formatRatio(perf.comment_to_view_ratio)}
           hint={`comments available on ${perf.comments_available_on}/${perf.videos_analyzed} videos`}
         />
-        <Stat
-          label="Uploads / month"
-          value={formatDecimal(perf.uploads_per_month)}
-          hint={perf.days_since_last_upload !== null ? `${perf.days_since_last_upload} days since last upload` : undefined}
-        />
+        {(() => {
+          // Cadence honesty: the backend only reports a monthly rate when the
+          // observation window is long enough (its documented minimum span).
+          // When cadence_reliable is false we show the raw observed count and
+          // actual date span instead of extrapolating a short burst into a
+          // "videos/month" publishing rate.
+          const span = perf.observed_span_days;
+          const spanText =
+            span !== null && span !== undefined ? `${formatNumber(span)} day${span === 1 ? "" : "s"}` : null;
+          if (perf.cadence_reliable && perf.uploads_per_month !== null && perf.uploads_per_month !== undefined) {
+            return (
+              <Stat
+                label="Uploads / month"
+                value={formatDecimal(perf.uploads_per_month)}
+                hint={
+                  (spanText ? `computed over an observed ${spanText} publication window` : "") +
+                  (perf.days_since_last_upload !== null
+                    ? ` · ${perf.days_since_last_upload} days since last upload`
+                    : "")
+                }
+              />
+            );
+          }
+          return (
+            <Stat
+              label="Upload activity (observed)"
+              value={spanText ? `${formatNumber(perf.videos_analyzed)} in ${spanText}` : formatNumber(perf.videos_analyzed)}
+              hint={
+                "Observation window too short for a defensible monthly rate — this is the raw count of analyzed uploads over the actual date span, not a publishing cadence." +
+                (perf.days_since_last_upload !== null ? ` ${perf.days_since_last_upload} days since last upload.` : "")
+              }
+            />
+          );
+        })()}
         <Stat label="Avg duration" value={formatDuration(perf.avg_duration_seconds)} hint="average video LENGTH, not watch time" />
         <Stat
           label="Median duration"
           value={formatDuration(perf.median_duration_seconds)}
           hint={`duration known on ${perf.duration_known_on} videos`}
         />
-        <Stat label="Shorts" value={formatNumber(perf.shorts_count)} hint="estimated from duration ≤ 5 min" />
-        <Stat label="Long-form" value={formatNumber(perf.longform_count)} hint="estimated from duration > 5 min" />
+        <Stat label="Estimated Shorts" value={formatNumber(perf.shorts_count)} hint="duration-based estimate (≤ 5 min), not an official YouTube classification" />
+        <Stat label="Estimated long-form" value={formatNumber(perf.longform_count)} hint="duration-based estimate (> 5 min), not an official YouTube classification" />
         <Stat label="Unclassified format" value={formatNumber(perf.format_unclassified)} />
         <Stat label="Hidden-stats videos" value={formatNumber(perf.hidden_stats_videos)} hint="excluded from ratio totals" />
       </div>
@@ -663,9 +728,40 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
                 </ResponsiveContainer>
               </div>
               <p className="mt-2 text-xs tabular-nums text-muted-foreground">
-                Age-normalized median views/day: Shorts {formatDecimal(perf.shorts_median_vpd)} · Long-form{" "}
-                {formatDecimal(perf.longform_median_vpd)}
+                Age-normalized median views/day: Estimated Shorts {formatDecimal(perf.shorts_median_vpd)} · Estimated
+                long-form {formatDecimal(perf.longform_median_vpd)}
               </p>
+              {/* Surface the backend's own conclusion status for the format
+                  comparison instead of implying an actionable verdict. Small or
+                  imbalanced samples, or differences under the documented 15%
+                  threshold, are reported by the backend as inconclusive /
+                  no-claimed-advantage — we render that verbatim from findings. */}
+              {(() => {
+                const fs = audit.findings.find((f) => f.key === "format_split");
+                if (!fs) return null;
+                if (fs.status === "detected") {
+                  return (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Backend conclusion: <span className="font-medium text-foreground">{fs.title}</span> — marked
+                      directional only; treat it as a prompt to A/B test, not a proven allocation decision.
+                    </p>
+                  );
+                }
+                if (fs.status === "inconclusive") {
+                  return (
+                    <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      Format comparison is inconclusive ({fs.explanation}) — no production-allocation change is
+                      recommended.
+                    </p>
+                  );
+                }
+                return (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Backend conclusion: {fs.explanation}
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
         )}
@@ -697,6 +793,33 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           emptyText=""
           baselineLabel="vs median views/day baseline"
         />
+      )}
+
+      {/* Fresh uploads: shown separately as provisional early traction. The
+          backend excludes them from mature rankings because a video only hours
+          old has its age floored, exaggerating views/day — so these numbers are
+          NOT presented as established long-term performance. */}
+      {(audit.fresh_videos_provisional?.length ?? 0) > 0 && (
+        <Card className="border-dashed">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="h-4 w-4 text-sky-600" aria-hidden="true" /> Recent uploads — provisional early
+              traction
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              These uploads are under the maturity window (or have no recorded publish date). They are excluded from
+              top-performer, underperformer and outlier rankings because too little time has passed for their
+              views/day to represent settled performance — compare them again once they are older.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {audit.fresh_videos_provisional!.map((v) => (
+                <VideoRow key={v.youtube_video_id} video={v} baselineLabel="vs mature-video baseline (provisional)" />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {/* F. Topics */}

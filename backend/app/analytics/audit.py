@@ -58,6 +58,15 @@ STALE_UPLOAD_DAYS = 60              # gap threshold for "long publishing pause"
 CONCENTRATION_HIGH = 0.60           # top-5 share above which dependence flagged
 OUTLIER_IQR_K = 3.0                 # Tukey-fence multiplier for vpd outliers
 TOPIC_TOKEN_MIN_LEN = 4             # ignore tiny words when grouping topics
+MIN_AGE_DAYS_FOR_RANKING = 7        # videos younger than this have provisional
+                                    # traction only (excluded from top/under/outliers)
+MIN_OBSERVATION_SPAN_DAYS = 30      # below this span, monthly cadence is not a
+                                    # defensible long-term estimate (inconclusive)
+MIN_HISTORY_DAYS_FOR_TREND = 90     # trend needs history predating the recent
+                                    # window so cohorts are genuinely separate
+FORMAT_SPLIT_MIN_PER_GROUP = 8      # >=8 videos per format for any detected split
+FORMAT_SPLIT_MAX_IMBALANCE = 5.0    # ratio of group sizes above which medians
+                                    # compare different creator behaviours
 STOPWORDS = {
     "the", "and", "for", "with", "this", "that", "your", "mine", "how",
     "why", "what", "when", "from", "into", "about", "video", "shorts",
@@ -75,19 +84,25 @@ class AuditConfig:
 
 
 FORMULAS: dict[str, str] = {
-    "age_days": "max(1, floor((now_utc - published_at) / 1 day))",
-    "views_per_day": "view_count / age_days  (age-normalized comparison metric)",
+    "age_days": "max(1, floor((now_utc - published_at) / 1 day)); undated videos have age unknown and are excluded from mature rankings",
+    "views_per_day": "view_count / age_days  (age-normalized comparison metric; for videos under 7 days old this is PROVISIONAL early traction only)",
     "avg_views": "mean(view_count) over the analyzed video set",
     "median_views": "median(view_count) over the analyzed video set",
     "total_views": "sum(view_count) over the analyzed video set",
     "like_to_view_ratio": "sum(like_count) / sum(view_count) restricted to videos that expose likes (NOT the full engagement rate)",
     "comment_to_view_ratio": "sum(comment_count) / sum(view_count) restricted to videos that expose comments",
-    "uploads_per_month": "count(analyzed) / max(1, span_months); span_months = (last_publish - first_publish).days / 30.44",
+    "uploads_per_month": f"count(analyzed) / span_months; span_months = span_days / 30.44. Only reported when the observed span >= {MIN_OBSERVATION_SPAN_DAYS} days (cadence_reliable=true); shorter windows report the raw count + span instead of extrapolating a monthly rate.",
     "days_since_last_upload": "floor((now_utc - max(published_at)) / 1 day)",
-    "outlier": "views_per_day beyond Q3 + 3*IQR (robust Tukey fence; no assumption of normality)",
+    "mature_video": f"a video with a known publish date at least {MIN_AGE_DAYS_FOR_RANKING} days old; only mature videos enter the baseline median, top/underperformer lists, outlier detection, distribution buckets and topic grouping",
+    "fresh_video_provisional": f"published < {MIN_AGE_DAYS_FOR_RANKING} days ago (or undated): shown separately as provisional early traction, never ranked or compared against settled performance",
+    "top_performers": "mature videos ranked by views_per_day, top 10 (fresh uploads excluded — their floored age exaggerates vpd)",
+    "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below the channel's own mature-median views/day baseline",
+    "outlier": "views_per_day beyond Q3 + 3*IQR computed over MATURE videos only (robust Tukey fence; requires >= 8 mature videos; no assumption of normality)",
     "top5_share_of_views": "sum(views of top-5 videos by view_count) / total_views",
-    "short_form": f"duration_seconds <= {SHORT_MAX_SECONDS} (public-metadata heuristic, not an official flag)",
-    "recent_vs_history": "median(views_per_day of last 90 days) / median(views_per_day of all analyzed)",
+    "short_form": f"duration_seconds <= {SHORT_MAX_SECONDS} (public-metadata heuristic labelled 'estimated-shorts'; not an official flag)",
+    "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
+    "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
+    "format_split": f"median views/day per estimated format group; needs >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
 }
 
 WEIGHTS: dict[str, float] = {
@@ -116,6 +131,8 @@ class PerformanceStats:
     comments_available_on: int
     hidden_stats_videos: int
     uploads_per_month: float | None
+    observed_span_days: int | None
+    cadence_reliable: bool
     days_since_last_upload: int | None
     first_published_at: datetime | None
     last_published_at: datetime | None
@@ -148,6 +165,8 @@ class VideoRanking:
     vs_baseline_pct: float | None  # relative to channel median vpd
     form: str                      # "estimated-shorts" | "estimated-longform" | "unknown"
     last_synced_at: datetime | None = None  # when stats were observed (freshness)
+    mature: bool = True            # age >= MIN_AGE_DAYS_FOR_RANKING; fresh videos
+                                   # have provisional traction only, never ranked
 
 
 @dataclass
@@ -197,6 +216,7 @@ class ChannelAudit:
     top_performers: list[VideoRanking]
     underperformers: list[VideoRanking]
     outliers: list[VideoRanking]
+    fresh_videos_provisional: list[VideoRanking]
     strong_topics: list[TopicGroup]
     weak_topics: list[TopicGroup]
     insufficient_data: bool
@@ -216,8 +236,22 @@ def _aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
+        # SQLite (and some PG drivers under legacy timezones) hand back naive
+        # datetimes even for timezone=True columns. The app stores everything
+        # in UTC, so interpret naive values as UTC instead of letting them
+        # crash comparisons with aware datetimes or sort inconsistently.
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _gap_days(a: datetime, b: datetime) -> float:
+    """Exact signed distance between two timestamps in fractional days.
+
+    Never use timedelta.days here: it truncates toward minus infinity, so a
+    burst of uploads spaced 6–20 hours apart would yield all-zero gaps and the
+    engine would falsely claim every upload shares one publish date.
+    """
+    return (b - a).total_seconds() / 86400.0
 
 
 def _safe_div(num: float | None, den: float) -> float | None:
@@ -314,11 +348,19 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
     days_since_last = (
         (now - pubs[-1]).days if pubs else None
     )
+    # Monthly cadence is only a defensible *long-term* estimate when the
+    # observed window spans enough time. Over shorter windows we report the
+    # raw observed count and span instead of extrapolating (e.g. 50 uploads
+    # in 4 days must never be presented as "50 videos/month" publishing rate).
     uploads_per_month = None
+    observed_span_days: int | None = None
+    cadence_reliable = False
     if len(pubs) >= 2:
-        span_days = max((pubs[-1] - pubs[0]).days, 1)
-        months = max(span_days / 30.44, 1.0)
-        uploads_per_month = len(pubs) / months
+        observed_span_days = max(round(_gap_days(pubs[0], pubs[-1])), 1)
+        if observed_span_days >= MIN_OBSERVATION_SPAN_DAYS:
+            months = observed_span_days / 30.44
+            uploads_per_month = len(pubs) / months
+            cadence_reliable = True
     elif len(pubs) == 1:
         uploads_per_month = None  # single upload: cadence unknowable
 
@@ -339,20 +381,31 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
             long_vpd.append(vpd)
 
     # Distribution buckets by views/day vs the channel's own median views/day.
-    ages = [max(1, (now - (_aware(v.published_at) or now)).days) for v in videos]
-    vpds_all = [
-        ((v.view_count or 0) / a) for v, a in zip(videos, ages)
+    # MATURE videos only: a hours-old upload floored at age=1 day would get a
+    # provisional vpd that skews both the bucket baseline and its own placement.
+    mature_vpds = [
+        ((v.view_count or 0) / max(1, (now - _aware(v.published_at)).days))
+        for v in videos
+        if v.published_at
+        and max(1, (now - _aware(v.published_at)).days) >= MIN_AGE_DAYS_FOR_RANKING
     ]
-    med_vpd = median(vpds_all) if vpds_all else None
+    excluded_fresh = len(videos) - len(mature_vpds)
+    med_vpd = median(mature_vpds) if mature_vpds else None
     buckets = []
-    if med_vpd and med_vpd > 0:
+    if med_vpd and med_vpd > 0 and len(mature_vpds) >= 3:
         ranges = [(0.0, 0.5), (0.5, 0.8), (0.8, 1.2), (1.2, 2.0), (2.0, float("inf"))]
         labels = ["<50%", "50–80%", "80–120%", "120–200%", ">200%"]
         for (lo, hi), label in zip(ranges, labels):
-            count = sum(1 for x in vpds_all if lo * med_vpd <= x < hi * med_vpd)
+            count = sum(1 for x in mature_vpds if lo * med_vpd <= x < hi * med_vpd)
             buckets.append({"label": label, "videos": count})
     else:
-        buckets = [{"label": "insufficient data", "videos": len(videos)}]
+        buckets = [{"label": "insufficient mature data", "videos": len(mature_vpds)}]
+    if excluded_fresh:
+        buckets.append({
+            "label": "excluded (<7 days old)",
+            "videos": excluded_fresh,
+            "note": f"Videos under {MIN_AGE_DAYS_FOR_RANKING} days have provisional traction only.",
+        })
 
     monthly: dict[str, int] = {}
     for p in pubs:
@@ -374,6 +427,8 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
         comments_available_on=len(cv_pairs),
         hidden_stats_videos=hidden,
         uploads_per_month=uploads_per_month,
+        observed_span_days=observed_span_days,
+        cadence_reliable=cadence_reliable,
         days_since_last_upload=days_since_last,
         first_published_at=pubs[0] if pubs else None,
         last_published_at=pubs[-1] if pubs else None,
@@ -398,8 +453,14 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
     rows: list[VideoRanking] = []
     for v in videos:
         pub = _aware(v.published_at)
-        age = max(1, (now - pub).days) if pub else max(1, (now - now).days or 1)
-        vpd = (v.view_count or 0) / age
+        if pub is not None:
+            age = max(1, (now - pub).days)
+        else:
+            # Undated video: age is UNKNOWN, not 1. Mark it immature so it is
+            # excluded from mature rankings/baselines instead of pretending a
+            # floor of one day reflects settled performance.
+            age = 0
+        vpd = (v.view_count or 0) / age if age > 0 else 0.0
         rows.append(
             VideoRanking(
                 youtube_video_id=v.youtube_video_id,
@@ -415,9 +476,13 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
                 vs_baseline_pct=None,
                 form=classify_format(v.duration_seconds, cfg.short_max_seconds),
                 last_synced_at=_aware(v.last_synced_at),
+                mature=pub is not None and age >= MIN_AGE_DAYS_FOR_RANKING,
             )
         )
-    vpds = sorted(r.views_per_day for r in rows)
+    # Baseline uses MATURE videos only. Including a hours-old upload whose
+    # views/day is floored at 1 day would drag the median around and make its
+    # own provisional traction look comparable to settled performance.
+    vpds = sorted(r.views_per_day for r in rows if r.mature)
     base = median(vpds) if vpds else None
     for r in rows:
         if base and base > 0:
@@ -426,20 +491,25 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
 
 
 def detect_outliers(rows: list[VideoRanking]) -> list[VideoRanking]:
-    if len(rows) < 8:  # fences meaningless on tiny samples
+    mature = [r for r in rows if r.mature]
+    if len(mature) < 8:  # fences meaningless on tiny samples
         return []
-    vpds = sorted(r.views_per_day for r in rows)
+    vpds = sorted(r.views_per_day for r in mature)
     q1, q3 = _quantiles(vpds)
     iqr = q3 - q1
     if iqr <= 0:
         return []
     upper = q3 + OUTLIER_IQR_K * iqr
-    return sorted((r for r in rows if r.views_per_day > upper), key=lambda r: -r.views_per_day)[:5]
+    return sorted((r for r in mature if r.views_per_day > upper), key=lambda r: -r.views_per_day)[:5]
 
 
 def group_topics(rows: list[VideoRanking], baseline: float | None) -> tuple[list[TopicGroup], list[TopicGroup]]:
     groups: dict[str, list[VideoRanking]] = {}
+    # Topic strength uses MATURE videos only — a fresh upload's provisional
+    # views/day must not decide whether a keyword looks "strong" or "weak".
     for r in rows:
+        if not r.mature:
+            continue
         for tok in set(_topic_tokens(r.title)):
             groups.setdefault(tok, []).append(r)
     scored: list[TopicGroup] = []
@@ -478,18 +548,36 @@ def build_findings(
 
     # ---- FACTS (measured) ----
     if perf.days_since_last_upload is not None:
+        if perf.uploads_per_month is not None and perf.cadence_reliable:
+            cadence_line = (
+                f"The channel published {perf.uploads_per_month:.2f} videos/month across the "
+                f"observed {perf.observed_span_days}-day window; the newest analyzed upload is "
+                f"{perf.days_since_last_upload} day(s) old."
+            )
+        elif perf.observed_span_days is not None:
+            cadence_line = (
+                f"{n} uploads observed within a span of only {perf.observed_span_days} day(s). "
+                "This window is too short to extrapolate a monthly publishing rate, so no "
+                "videos/month figure is reported. The newest analyzed upload is "
+                f"{perf.days_since_last_upload} day(s) old."
+            )
+        else:
+            cadence_line = f"Newest analyzed upload is {perf.days_since_last_upload} day(s) old."
         findings.append(_f(
             "upload_cadence", "Upload cadence (measured)", "info", "fact",
-            f"The channel published {perf.uploads_per_month:.2f} videos/month across the analyzed "
-            f"window; the newest analyzed upload is {perf.days_since_last_upload} day(s) old."
-            if perf.uploads_per_month is not None else
-            f"Newest analyzed upload is {perf.days_since_last_upload} day(s) old.",
+            cadence_line,
             "No action — measured fact.", "high",
-            {"uploads_per_month": perf.uploads_per_month, "days_since_last_upload": perf.days_since_last_upload,
+            {"uploads_per_month": perf.uploads_per_month,
+             "observed_span_days": perf.observed_span_days,
+             "cadence_reliable": perf.cadence_reliable,
+             "min_span_days_for_monthly_rate": MIN_OBSERVATION_SPAN_DAYS,
+             "days_since_last_upload": perf.days_since_last_upload,
              "first_published_at": perf.first_published_at.isoformat() if perf.first_published_at else None,
              "last_published_at": perf.last_published_at.isoformat() if perf.last_published_at else None},
             ["Cadence is computed over the analyzed set only (latest "
-             f"{cfg.analyze_limit} synced videos), not the channel's whole history."],
+             f"{cfg.analyze_limit} synced videos), not the channel's whole history.",
+             "A monthly rate requires an observation span >= "
+             f"{MIN_OBSERVATION_SPAN_DAYS} days; shorter bursts are reported as raw counts only."],
             kind="fact",
         ))
 
@@ -515,29 +603,71 @@ def build_findings(
 
     # ---- 2. Upload consistency (gap variance) ----
     pubs = sorted(_aware(v.published_at) for v in videos if v.published_at)
+    # A burst ending "now" also means most of its uploads are themselves too
+    # fresh for any rhythm judgement; count them so the rule can refuse.
+    fresh_in_window = sum(1 for p in pubs if (now - p).days < MIN_AGE_DAYS_FOR_RANKING)
     if len(pubs) < 6:
         findings.append(_f("upload_consistency", "Upload consistency", "low", "inconclusive",
                            f"Only {len(pubs)} dated uploads available; gap statistics need at least 6.",
                            "Sync more videos and re-run.", "inconclusive", {"dated_uploads": len(pubs)}, limits_small))
+    elif pubs and _gap_days(pubs[0], pubs[-1]) < MIN_OBSERVATION_SPAN_DAYS:
+        # Whole analyzed window is a short burst: even with fractional gaps it
+        # cannot represent a publishing rhythm, and extrapolating from it (or
+        # scoring consistency off it) would fabricate coverage.
+        gaps = [_gap_days(a, b) for a, b in zip(pubs, pubs[1:])]
+        med_gap = median(gaps)
+        span_days = _gap_days(pubs[0], pubs[-1])
+        findings.append(_f("upload_consistency", "Upload consistency", "low", "inconclusive",
+                           f"The latest {len(pubs)} analyzed uploads were published within a single "
+                           f"{span_days:.1f}-day burst (median gap {med_gap*24:.1f} hours), which is far "
+                           f"short of the {MIN_OBSERVATION_SPAN_DAYS}-day observation needed to judge a "
+                           "publishing rhythm — this window says nothing about the channel's normal cadence.",
+                           "Re-audit after a wider spread of uploads accumulates.", "inconclusive",
+                           {"median_gap_days": round(med_gap, 2), "observed_span_days": round(span_days, 2),
+                            "gaps_days": [round(g, 2) for g in gaps],
+                            "min_observation_days": MIN_OBSERVATION_SPAN_DAYS},
+                           ["A bulk import or mass-scheduled release can compress publish dates; "
+                            "gap regularity cannot be judged from one burst."]))
     else:
-        gaps = [(b - a).days for a, b in zip(pubs, pubs[1:])]
+        # Fractional-day gaps: timedelta.days truncation used to report every
+        # gap of a same-day burst as 0 and falsely claim one shared date.
+        gaps = [_gap_days(a, b) for a, b in zip(pubs, pubs[1:])]
         med_gap = median(gaps)
         big_gaps = sum(1 for g in gaps if med_gap > 0 and g > med_gap * 3)
-        if med_gap <= 0:
+        span_days = _gap_days(pubs[0], pubs[-1])
+        ev_gaps = [round(g, 2) for g in gaps]
+        if fresh_in_window >= max(2, len(pubs) // 2):
             findings.append(_f("upload_consistency", "Upload consistency", "low", "inconclusive",
-                               "All analyzed uploads share the same publish date; gaps are degenerate.",
-                               "Check the sync snapshot.", "inconclusive", {"gaps": gaps}, []))
+                               f"{fresh_in_window} of the {len(pubs)} analyzed uploads are under "
+                               f"{MIN_AGE_DAYS_FOR_RANKING} days old; the observable history is too young "
+                               "to establish a publishing rhythm.",
+                               "Re-audit once more of the recent uploads are at least a week old.", "inconclusive",
+                               {"median_gap_days": round(med_gap, 2), "observed_span_days": round(span_days, 2),
+                                "gaps_days": ev_gaps},
+                               ["Fresh-upload windows cannot distinguish a real rhythm from a burst."]))
+        elif med_gap <= 0.05:  # <= ~72 minutes between consecutive uploads
+            findings.append(_f("upload_consistency", "Upload consistency", "low", "inconclusive",
+                               f"The latest {len(pubs)} analyzed uploads were published within a single "
+                               f"{span_days:.1f}-day burst (median gap {med_gap*24:.1f} hours), so this window "
+                               "says nothing about the channel's normal publishing rhythm.",
+                               "Re-audit after a wider spread of uploads accumulates.", "inconclusive",
+                               {"median_gap_days": round(med_gap, 2), "observed_span_days": round(span_days, 2),
+                                "gaps_days": ev_gaps},
+                               ["A bulk import or mass-scheduled release can compress publish dates; "
+                                "gap regularity cannot be judged from one burst."]))
         elif big_gaps >= max(2, len(gaps) // 4):
             findings.append(_f("upload_consistency", "Inconsistent upload schedule", "medium", "detected",
-                               f"{big_gaps} of {len(gaps)} upload gaps exceed 3× the median gap ({med_gap:.0f} days).",
+                               f"{big_gaps} of {len(gaps)} upload gaps exceed 3× the median gap ({med_gap:.1f} days).",
                                "Batch-produce content or use a content calendar to smooth gaps.", "medium",
-                               {"median_gap_days": med_gap, "gaps_over_3x_median": big_gaps, "total_gaps": len(gaps)},
+                               {"median_gap_days": round(med_gap, 2), "gaps_over_3x_median": big_gaps,
+                                "total_gaps": len(gaps), "observed_span_days": round(span_days, 2)},
                                ["Gap analysis uses only the analyzed window."]))
         else:
             findings.append(_f("upload_consistency", "Upload consistency", "low", "ok",
-                               f"Median gap between uploads is {med_gap:.0f} days with few outliers.",
+                               f"Median gap between uploads is {med_gap:.1f} days with few outliers.",
                                "Maintain the rhythm.", "medium",
-                               {"median_gap_days": med_gap, "total_gaps": len(gaps)}, []))
+                               {"median_gap_days": round(med_gap, 2), "total_gaps": len(gaps),
+                                "observed_span_days": round(span_days, 2)}, []))
 
     # ---- 3. Recent performance vs channel's own history ----
     if small_sample or baseline is None or baseline <= 0:
@@ -548,51 +678,66 @@ def build_findings(
         cutoff = now - timedelta(days=cfg.recent_window_days)
         recent = [r for r in rows if r.published_at and r.published_at >= cutoff]
         older = [r for r in rows if r.published_at and r.published_at < cutoff]
-        if len(recent) < 2:
+        mature_recent = [r for r in recent if r.mature]
+        immature = len(recent) - len(mature_recent)
+        # Independent-history requirement: with no video predating the recent
+        # window (or fewer than MIN_HISTORY_DAYS_FOR_TREND of them), the
+        # "historical baseline" would be drawn from the SAME cohort being
+        # tested — comparing a set against itself proves nothing. In that case
+        # any ratio ≈ 1.0 ("stable") is an artifact, so we refuse to judge.
+        hist_cutoff = now - timedelta(days=max(cfg.recent_window_days, MIN_HISTORY_DAYS_FOR_TREND))
+        independent_hist = [r for r in rows if r.published_at and r.published_at < hist_cutoff and r.mature]
+        ev = {"recent_videos": len(recent), "window_days": cfg.recent_window_days,
+              "new_uploads_excluded_from_decline_call": immature,
+              "independent_history_videos": len(independent_hist)}
+        if len(mature_recent) < 2:
+            reason = (
+                f"The recent cohort ({cfg.recent_window_days}-day window) has {len(recent)} upload(s), "
+                f"{immature} of which are under {MIN_AGE_DAYS_FOR_RANKING} days old; at least 2 mature "
+                "recent videos are needed before any trend can be judged."
+                if recent else
+                f"No uploads within the last {cfg.recent_window_days} days to build a recent cohort."
+            )
             findings.append(_f("recent_trend", "Recent performance trend", "low", "inconclusive",
-                               f"Fewer than 2 uploads in the last {cfg.recent_window_days} days — the recent cohort is too small.",
-                               "Compare again after more uploads accumulate.", "inconclusive",
-                               {"recent_videos": len(recent)}, ["Small cohorts swing wildly; treat cautiously once data grows."]))
+                               reason,
+                               "Re-audit once recent uploads are at least a week old.", "inconclusive", ev,
+                               ["New-upload view accumulation is incomplete; treating low vpd as failure "
+                                "would be misleading."]))
+        elif len(independent_hist) < 3:
+            findings.append(_f("recent_trend", "Recent performance trend", "low", "inconclusive",
+                               f"All {len(rows)} analyzed videos were published within roughly the same "
+                               f"{cfg.recent_window_days}-day window; there is no independent earlier "
+                               "cohort to compare against. A near-identical recent/baseline ratio here "
+                               "is expected and says nothing about a trend.",
+                               "Sync a wider slice of the channel's back-catalogue, then re-run.",
+                               "inconclusive", ev,
+                               ["Trend detection requires history that does not overlap the recent cohort."]))
         else:
-            # Fairness guard: a video younger than ~7 days has not had time to
-            # accumulate views; including it makes any fresh upload look like a
-            # collapse. It is measured but excluded from the DECLINE judgement.
-            mature_recent = [r for r in recent if r.age_days >= 7]
-            immature = len(recent) - len(mature_recent)
-            rec_med = median(r.views_per_day for r in recent)
-            hist_base = median([r.views_per_day for r in (older if len(older) >= 3 else rows)])
+            rec_med = median(r.views_per_day for r in mature_recent)
+            hist_base = median([r.views_per_day for r in (older if len(older) >= 3 else independent_hist)])
             ratio = _safe_div(rec_med, hist_base)
-            ev = {"recent_median_vpd": round(rec_med, 2), "baseline_median_vpd": round(hist_base, 2),
-                  "recent_videos": len(recent), "window_days": cfg.recent_window_days,
-                  "new_uploads_excluded_from_decline_call": immature}
-            decline_basis = _safe_div(
-                median(r.views_per_day for r in mature_recent) if mature_recent else None, hist_base
-            ) if immature else ratio
-            if immature:
-                ev["mature_only_ratio"] = round(decline_basis, 3) if decline_basis is not None else None
-            effective = decline_basis if immature else ratio
-            if effective is not None and effective < 0.6 and len(mature_recent) >= 2:
+            ev.update({"recent_median_vpd": round(rec_med, 2),
+                       "baseline_median_vpd": round(hist_base, 2) if hist_base else None,
+                       "mature_recent_videos": len(mature_recent)})
+            effective = ratio
+            if effective is not None and effective < 0.6:
                 findings.append(_f("recent_trend", "Weak recent performance vs own history", "high", "detected",
                                    f"Mature videos from the last {cfg.recent_window_days} days earn {effective*100:.0f}% of the "
                                    f"channel's own historical median views/day ({rec_med:.1f} vs {hist_base:.1f}). "
                                    f"Baseline: the channel's own videos. No statistical significance test is claimed.",
                                    "Review recent titles/topics/thumbnails against the channel's best-performing patterns.",
                                    "medium", ev,
-                                   ["Views/day keeps falling as videos age slowly; uploads under 7 days old were excluded from the decline call.",
+                                   [f"Views/day keeps falling as videos age slowly; uploads under "
+                                    f"{MIN_AGE_DAYS_FOR_RANKING} days old were excluded from this call.",
                                     "Public data cannot show whether the drop is demand-side or content-side — no causal claim is made."]))
-            elif effective is not None and effective < 0.6 and immature and len(mature_recent) < 2:
-                findings.append(_f("recent_trend", "Recent performance trend", "low", "inconclusive",
-                                   f"The recent cohort is dominated by uploads under 7 days old ({immature} of {len(recent)}); "
-                                   "they have not had time to accumulate views, so no decline can be judged yet.",
-                                   "Re-audit once recent uploads are at least a week old.", "inconclusive", ev,
-                                   ["New-upload view accumulation is incomplete; treating low vpd as failure would be misleading."]))
-            elif ratio is not None and ratio > 1.5:
+            elif effective is not None and effective > 1.5:
                 findings.append(_f("recent_trend", "Recent uploads outperform history", "info", "detected",
                                    f"Recent videos average {ratio*100:.0f}% of the historical views/day baseline.",
                                    "Identify what changed and repeat it deliberately.", "medium", ev, []))
             else:
                 findings.append(_f("recent_trend", "Recent performance stable", "low", "ok",
-                                   f"Recent views/day sits within ±40% of the channel's own baseline ({(ratio or 0)*100:.0f}%).",
+                                   f"Mature recent views/day sits within ±40% of the channel's own baseline "
+                                   f"({(ratio or 0)*100:.0f}%).",
                                    "No action needed.", "medium", ev, []))
 
     # ---- 4. Dependence on a few popular videos ----
@@ -656,32 +801,68 @@ def build_findings(
                           "Descriptions and title lengths look adequately populated.", "No action needed.", "medium", ev, []))
 
     # ---- 7. Shorts vs long-form ----
-    if perf.shorts_count < 3 or perf.longform_count < 3:
+    fmt_limits = [f"Format is inferred from duration <= {cfg.short_max_seconds}s; YouTube's own "
+                  "Shorts flag is not exposed publicly, so every group membership is an estimate."]
+    if perf.shorts_count < FORMAT_SPLIT_MIN_PER_GROUP or perf.longform_count < FORMAT_SPLIT_MIN_PER_GROUP:
         findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
-                           f"Need >=3 videos per format (shorts={perf.shorts_count}, long-form={perf.longform_count}).",
+                           f"Need >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per format to compare medians "
+                           f"(estimated shorts={perf.shorts_count}, estimated long-form={perf.longform_count}).",
                            "Publish (or sync) more of each format, then re-audit.", "inconclusive",
-                           {"shorts": perf.shorts_count, "long": perf.longform_count},
-                           [f"Format is inferred from duration <= {cfg.short_max_seconds}s; YouTube's own Shorts flag is not exposed publicly."]))
+                           {"shorts": perf.shorts_count, "long": perf.longform_count,
+                            "min_per_group": FORMAT_SPLIT_MIN_PER_GROUP},
+                           fmt_limits))
     else:
         s_vpd, l_vpd = perf.shorts_median_vpd, perf.longform_median_vpd
+        imbalance = max(perf.shorts_count, perf.longform_count) / max(1, min(perf.shorts_count, perf.longform_count))
         ev = {"shorts_median_vpd": s_vpd, "longform_median_vpd": l_vpd,
-              "shorts_count": perf.shorts_count, "longform_count": perf.longform_count}
+              "shorts_count": perf.shorts_count, "longform_count": perf.longform_count,
+              "group_size_imbalance": round(imbalance, 1),
+              "max_supported_imbalance": FORMAT_SPLIT_MAX_IMBALANCE}
         both = [x for x in (s_vpd, l_vpd) if x and x > 0]
-        if len(both) == 2:
+        if len(both) != 2:
+            findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
+                               "Duration metadata missing on too many videos.", "Re-sync to refresh durations.",
+                               "inconclusive", ev, fmt_limits))
+        elif imbalance > FORMAT_SPLIT_MAX_IMBALANCE:
+            smaller = "Shorts" if perf.shorts_count < perf.longform_count else "long-form"
+            findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
+                               f"The formats are too imbalanced to compare fairly "
+                               f"({perf.shorts_count} estimated Shorts vs {perf.longform_count} estimated "
+                               f"long-form, a {imbalance:.0f}:1 split). The median of a {smaller}-only "
+                               f"{min(perf.shorts_count, perf.longform_count)}-video sample reflects a few "
+                               "uploads, not a format trend, so no production-allocation recommendation "
+                               "is made.",
+                               f"Treat the current numbers as descriptive only. Re-audit once at least "
+                               f"{FORMAT_SPLIT_MIN_PER_GROUP} {smaller} uploads exist, or run your own "
+                               "controlled tests.", "inconclusive", ev,
+                               fmt_limits + ["Imbalanced groups compare different creator behaviours, "
+                                             "not formats."]))
+        else:
             ratio = max(both) / min(both)
             winner = "Shorts" if s_vpd == max(both) else "Long-form"
             loser = "long-form" if winner == "Shorts" else "Shorts"
-            findings.append(_f("format_split", f"{winner} outperform {loser} per day", "low", "detected",
-                               f"Median views/day: Shorts {s_vpd:.1f} vs long-form {l_vpd:.1f} ({ratio:.1f}× apart).",
-                               f"Allocate production effort proportionally; test whether {loser} ideas can be reframed.",
-                               "medium", ev,
-                               ["Views/day favors Shorts partly due to shelf-life differences; treat as directional."]))
-        else:
-            findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
-                               "Duration metadata missing on too many videos.", "Re-sync to refresh durations.", "inconclusive", ev, []))
+            diff_pct = abs(s_vpd - l_vpd) / max(both) * 100.0
+            if diff_pct < 15.0:
+                findings.append(_f("format_split", "Shorts vs long-form comparison", "info", "ok",
+                                   f"Median views/day differ by only {diff_pct:.0f}% between formats "
+                                   f"(Shorts {s_vpd:.1f} vs long-form {l_vpd:.1f}); that gap is small and "
+                                   "the samples are modest, so no format advantage is claimed.",
+                                   "No action needed based on this data.", "medium", ev,
+                                   fmt_limits + ["Small cohorts swing wildly; treat cautiously once data grows."]))
+            else:
+                findings.append(_f("format_split", f"{winner} outperform {loser} per day (directional)",
+                                   "low", "detected",
+                                   f"Median views/day: Shorts {s_vpd:.1f} vs long-form {l_vpd:.1f} "
+                                   f"({ratio:.1f}× apart). This is a directional observation from public "
+                                   "totals, not a proven format effect.",
+                                   f"Optionally test it: two {winner}-style and two {loser}-style uploads, "
+                                   "then compare your own results.", "medium", ev,
+                                   fmt_limits + ["Views/day favors Shorts partly due to shelf-life differences; treat as directional."]))
 
     # ---- 8. Format-mismatch opportunity ----
-    if not small_sample and baseline and baseline > 0 and perf.shorts_count >= 3 and perf.longform_count >= 3:
+    if (not small_sample and baseline and baseline > 0
+            and perf.shorts_count >= FORMAT_SPLIT_MIN_PER_GROUP
+            and perf.longform_count >= FORMAT_SPLIT_MIN_PER_GROUP):
         weaker_is_shorts = (perf.shorts_median_vpd or 0) < (perf.longform_median_vpd or 0)
         weaker_fmt = "Shorts" if weaker_is_shorts else "Long-form"
         stronger = "long-form" if weaker_is_shorts else "Shorts"
@@ -750,8 +931,18 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
         med_gap = cons.evidence.get("median_gap_days")
         outliers_ct = cons.evidence.get("gaps_over_3x_median", 0)
         total_gaps = cons.evidence.get("total_gaps", 1)
-        raw = 1.0 - min(1.0, outliers_ct / max(1, total_gaps))
-        add("consistency", raw, f"median gap {med_gap}d, {outliers_ct}/{total_gaps} irregular gaps")
+        span = cons.evidence.get("observed_span_days") or 0
+        note = f"median gap {med_gap}d, {outliers_ct}/{total_gaps} irregular gaps"
+        if span < MIN_OBSERVATION_SPAN_DAYS:
+            # A short burst window cannot represent a publishing rhythm; scoring
+            # consistency from it would silently fabricate coverage. Excluded.
+            comps.append({"name": "consistency", "weight": WEIGHTS["consistency"], "score": None,
+                          "excluded": True,
+                          "note": f"excluded — only {span:.0f} day(s) of uploads observed "
+                                  f"(needs >= {MIN_OBSERVATION_SPAN_DAYS})"})
+        else:
+            raw = 1.0 - min(1.0, outliers_ct / max(1, total_gaps))
+            add("consistency", raw, note)
     # recent trend
     tr = next((f for f in findings if f.key == "recent_trend"), None)
     if tr and tr.status != "inconclusive" and tr.evidence.get("recent_median_vpd") is not None:
@@ -779,11 +970,12 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
         "The score is a relative self-assessment against the channel's own history plus soft fixed caps; it is not comparable across different channels.",
         "No statistical significance testing is performed; small samples reduce which components can be scored at all.",
     ]
-    if not comps:
+    if not comps or all(c.get("score") is None for c in comps):
         return HealthScore(None, "insufficient-data", [], "weighted mean of available components (renormalized weights)",
                            caveats + ["No component had enough data to score."])
-    wsum = sum(c["weight"] for c in comps)
-    score = sum(c["score"] * c["weight"] for c in comps) / wsum
+    scorable = [c for c in comps if c.get("score") is not None]
+    wsum = sum(c["weight"] for c in scorable)
+    score = sum(c["score"] * c["weight"] for c in scorable) / wsum
     band = "healthy" if score >= 75 else "watch" if score >= 55 else "at-risk"
     return HealthScore(round(score), band, comps,
                        "score = Σ(component × weight) / Σ(weights present); each component ∈ [0,100]",
@@ -843,6 +1035,44 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         notes.append("No recorded sync timestamp; video statistics may be outdated.")
 
     ranked_desc = sorted(rows, key=lambda r: -r.views_per_day)
+    # Top performers are MATURE videos only. A video published hours ago has its
+    # age floored at 1 day, so its views/day is provisional early traction that
+    # can dwarf settled performance; ranking it as a "top performer" would be
+    # misleading. Fresh uploads stay visible in fresh_videos_provisional instead.
+    mature_desc = [r for r in ranked_desc if r.mature]
+    fresh_rows = [r for r in ranked_desc if not r.mature]
+    if fresh_rows:
+        notes.append(
+            f"{len(fresh_rows)} upload(s) under {MIN_AGE_DAYS_FOR_RANKING} days old (or undated) were "
+            "excluded from top/underperformer/outlier rankings and shown separately as provisional "
+            "early traction — their views/day is not yet a settled performance rate."
+        )
+
+    # ---- health-score coverage (never present partial data as comprehensive) ----
+    scored_w = sum(c["weight"] for c in score.components if c.get("score") is not None)
+    total_w = sum(WEIGHTS.values())
+    coverage_pct = round(scored_w / total_w * 100) if total_w else 0
+    if score.score is not None:
+        if coverage_pct < 50:
+            score.caveats.insert(
+                0,
+                f"PROVISIONAL SCORE: only {coverage_pct}% of the standard component weight could be "
+                "computed from available data. Treat this as a limited snapshot, not a comprehensive "
+                "channel assessment.",
+            )
+        elif coverage_pct < 80:
+            score.caveats.insert(
+                0,
+                f"PARTIAL COVERAGE: components worth {100 - coverage_pct}% of the standard weighting "
+                "were excluded for lack of data; see the component list below.",
+            )
+        score.components.append({
+            "name": "coverage",
+            "weight": None,
+            "score": coverage_pct,
+            "note": f"{round(scored_w, 2)} of {round(total_w, 2)} standard weight points had enough data to score",
+        })
+
     return ChannelAudit(
         channel_id=channel.id,
         youtube_channel_id=channel.youtube_channel_id,
@@ -854,14 +1084,15 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         performance=perf,
         health_score=score,
         findings=findings,
-        top_performers=ranked_desc[:10],
+        top_performers=mature_desc[:10],
         # Underperformance requires >=7 days of observation AND a computable
         # baseline. Fresh uploads are excluded rather than labelled failures.
         underperformers=[
-            r for r in ranked_desc
-            if r.vs_baseline_pct is not None and r.vs_baseline_pct < -40 and r.age_days >= 7
+            r for r in mature_desc
+            if r.vs_baseline_pct is not None and r.vs_baseline_pct < -40
         ][-10:],
         outliers=outliers,
+        fresh_videos_provisional=fresh_rows[:10],
         strong_topics=strong,
         weak_topics=weak,
         insufficient_data=insufficient,
