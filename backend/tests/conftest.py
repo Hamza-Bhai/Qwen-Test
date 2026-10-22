@@ -90,6 +90,9 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", configured_url)
     monkeypatch.setenv("YOUTUBE_API_KEY", "test-api-key")
     monkeypatch.setenv("ENABLE_SCHEDULER", "false")
+    # Never call youtube.com/shorts/ from tests: "check unavailable" makes the
+    # classifier use its duration fallback.
+    monkeypatch.setattr("app.services.channel_service.check_is_short", lambda *a, **k: None)
 
     get_settings.cache_clear()
     url = get_settings().database_url

@@ -49,10 +49,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Channel, Video
+from app.services.youtube import SHORTS_MAX_SECONDS
 
 # --------------------------------------------------------------------- config
 DEFAULT_ANALYZE_LIMIT = 50          # latest N videos by publish date
-SHORT_MAX_SECONDS = 300             # <= 5 min treated as short-form heuristic
+SHORT_MAX_SECONDS = SHORTS_MAX_SECONDS  # Shorts are capped at 3 min; fallback only
 MIN_VIDEOS_FOR_FINDINGS = 5         # below this: findings are inconclusive
 RECENT_WINDOW_DAYS = 90             # "recent performance" window
 STALE_UPLOAD_DAYS = 60              # gap threshold for "long publishing pause"
@@ -100,7 +101,7 @@ FORMULAS: dict[str, str] = {
     "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below the channel's own mature-median views/day baseline",
     "outlier": "views_per_day beyond Q3 + 3*IQR computed over MATURE videos only (robust Tukey fence; requires >= 8 mature videos; no assumption of normality)",
     "top5_share_of_views": "sum(views of top-5 videos by view_count) / total_views",
-    "short_form": ("duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s => estimated-shorts; portrait videos 301-600s => unknown; public-metadata heuristic, not an official Shorts flag"),
+    "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
     "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
     "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
     "format_split": f"median views/day per estimated format group; needs >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
@@ -275,42 +276,25 @@ def _quantiles(sorted_vals: list[float]) -> tuple[float, float]:
     return q(0.25), q(0.75)
 
 
-# Duration alone cannot confirm the format of videos between 301 and 600
-# seconds: some creators publish square/portrait sub-10-minute videos in the
-# Shorts feed, while landscape videos of the same length are ordinary uploads.
-SHORTS_MAX_LANDSCAPE_SECONDS = 300   # landscape/square + this short => estimated short
-SHORTS_MAX_PORTRAIT_SECONDS = 600    # portrait aspect ratio widens the window
-
-
 def classify_format(
     duration_seconds: int | None,
     short_max: int,
-    width: int | None = None,
-    height: int | None = None,
+    is_short: bool | None = None,
 ) -> str:
-    """Format ESTIMATE from public metadata (duration + content dimension).
+    """Shorts vs long-form label for one video.
 
-    YouTube's Data API v3 exposes NO official Shorts flag, so nothing here can
-    *confirm* a format; labels stay prefixed with 'estimated-' and never become
-    ground truth downstream. Rules actually implemented:
+      - is_short known (youtube.com/shorts/<id> check at sync) -> use it
+      - otherwise duration missing                            -> unknown
+      - otherwise duration <= short_max (180s)                -> estimated-shorts
+      - otherwise                                             -> estimated-longform
 
-      - duration missing                      -> unknown
-      - portrait video (height > width):
-          duration <= short_max               -> estimated-shorts
-          short_max < duration <= 600s        -> unknown (ambiguous band)
-          duration > 600s                     -> estimated-longform
-      - landscape/square or dimensions unknown:
-          duration <= short_max (default 300) -> estimated-shorts
-          otherwise                           -> estimated-longform
-
-    The portrait signal comes from contentDetails.dimension ("WxH"), which most
-    uploads expose; when it is absent we fall back to the duration heuristic.
+    Labels keep the 'estimated-' prefix because the Data API itself has no
+    Shorts flag; the URL check is YouTube's own routing, not an API field.
     """
+    if is_short is not None:
+        return "estimated-shorts" if is_short else "estimated-longform"
     if duration_seconds is None:
         return "unknown"
-    portrait = bool(width and height and height > width)
-    if portrait and short_max < duration_seconds <= SHORTS_MAX_PORTRAIT_SECONDS:
-        return "unknown"  # could be a Short or a regular upload; evidence insufficient
     if duration_seconds <= short_max:
         return "estimated-shorts"
     return "estimated-longform"
@@ -400,8 +384,7 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
     shorts_views, long_views, shorts_vpd, long_vpd = [], [], [], []
     for v in videos:
         form = classify_format(v.duration_seconds, cfg.short_max_seconds,
-                               getattr(v, "content_width", None),
-                               getattr(v, "content_height", None))
+                               getattr(v, "is_short", None))
         {"estimated-shorts": shorts_ids, "estimated-longform": long_ids, "unknown": unknown_ids}[form].append(v)
         age = max(1, (now - (_aware(v.published_at) or now)).days)
         vpd = (v.view_count or 0) / age
@@ -507,8 +490,7 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
                 views_per_day=round(vpd, 2),
                 vs_baseline_pct=None,
                 form=classify_format(v.duration_seconds, cfg.short_max_seconds,
-                                     getattr(v, "content_width", None),
-                                     getattr(v, "content_height", None)),
+                                     getattr(v, "is_short", None)),
                 last_synced_at=_aware(v.last_synced_at),
                 mature=pub is not None and age >= MIN_AGE_DAYS_FOR_RANKING,
             )
@@ -835,9 +817,8 @@ def build_findings(
                           "Descriptions and title lengths look adequately populated.", "No action needed.", "medium", ev, []))
 
     # ---- 7. Shorts vs long-form ----
-    fmt_limits = [f"Format is estimated from duration <= {cfg.short_max_seconds}s plus portrait "
-                f"aspect ratio where available (contentDetails.dimension); YouTube's own "
-                  "Shorts flag is not exposed publicly, so every group membership is an estimate."]
+    fmt_limits = [f"Format comes from YouTube's /shorts/<id> URL check where it succeeded, otherwise "
+                  f"from duration <= {cfg.short_max_seconds}s; the Data API itself exposes no Shorts flag."]
     if perf.shorts_count < FORMAT_SPLIT_MIN_PER_GROUP or perf.longform_count < FORMAT_SPLIT_MIN_PER_GROUP:
         findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
                            f"Need >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per format to compare medians "
@@ -1049,7 +1030,8 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         notes.append(f"{perf.hidden_stats_videos} video(s) hide like AND comment counts.")
     notes.append("Analysis window: latest "
                  f"{min(cfg.analyze_limit, perf.videos_analyzed)} synced videos (of {channel.video_count or 'unknown'} total on channel).")
-    notes.append("Format labels are duration-based ESTIMATES ('estimated-shorts'/'estimated-longform'); "
+    notes.append("Format labels ('estimated-shorts'/'estimated-longform') come from YouTube's /shorts/<id> "
+                 f"URL check, falling back to duration <= {SHORT_MAX_SECONDS}s when the check was unavailable; "
                  "YouTube's Data API does not expose an official Shorts flag.")
     notes.append("Topic groups are repeated title WORDS (lexical), not semantic topics.")
 

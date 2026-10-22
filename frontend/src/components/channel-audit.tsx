@@ -53,9 +53,9 @@ import { ErrorMessage } from "@/components/error-message";
 
 const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
 
-/** Map machine format identifiers to honest human wording. The backend only
- *  ever emits "estimated-*" or "unknown" — duration is not an official Shorts
- *  flag, so we never render these as verified classifications. */
+/** Map machine format identifiers to human wording. The backend emits
+ *  "estimated-*" or "unknown": labels come from YouTube's /shorts/ URL check,
+ *  with a duration fallback — the Data API itself has no Shorts flag. */
 export function formatFormLabel(form: string): string {
   switch (form) {
     case "estimated-shorts":
@@ -259,7 +259,7 @@ function VideoRow({ video, baselineLabel }: { video: AuditVideoRanking; baseline
         )}
         <p className="mt-0.5 text-xs text-muted-foreground">
           {formatDate(video.published_at)} · {video.age_days}d old · {formatDuration(video.duration_seconds)} ·{" "}
-          <span title="Format is estimated from video duration; YouTube's public API has no official Shorts flag.">
+          <span title="Format comes from YouTube's /shorts/ URL check (duration ≤ 3 min fallback if the check was unavailable).">
             {formatFormLabel(video.form)}
           </span>
         </p>
@@ -645,8 +645,8 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           value={formatDuration(perf.median_duration_seconds)}
           hint={`duration known on ${perf.duration_known_on} videos`}
         />
-        <Stat label="Estimated Shorts" value={formatNumber(perf.shorts_count)} hint="duration-based estimate (≤ 5 min), not an official YouTube classification" />
-        <Stat label="Estimated long-form" value={formatNumber(perf.longform_count)} hint="duration-based estimate (> 5 min), not an official YouTube classification" />
+        <Stat label="Estimated Shorts" value={formatNumber(perf.shorts_count)} hint="checked via youtube.com/shorts/ URL; duration ≤ 3 min fallback if unavailable" />
+        <Stat label="Estimated long-form" value={formatNumber(perf.longform_count)} hint="regular uploads, incl. videos over 3 min (Shorts can't be longer)" />
         <Stat label="Unclassified format" value={formatNumber(perf.format_unclassified)} />
         <Stat label="Hidden-stats videos" value={formatNumber(perf.hidden_stats_videos)} hint="excluded from ratio totals" />
       </div>
@@ -707,8 +707,8 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
               <CardTitle className="text-base">Estimated Shorts vs long-form</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Average total views per video by format ({perf.shorts_count} estimated Shorts ·{" "}
-                {perf.longform_count} estimated long-form). Formats are inferred from duration only — YouTube&apos;s
-                public API exposes no official Shorts flag. Totals are age-skewed; the age-normalized comparison is
+                {perf.longform_count} estimated long-form). Formats come from YouTube&apos;s /shorts/ URL check, with a
+                duration fallback (≤ 3 min) when the check was unavailable. Totals are age-skewed; the age-normalized comparison is
                 shown below the chart.
               </p>
             </CardHeader>

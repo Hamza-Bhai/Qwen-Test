@@ -186,6 +186,34 @@ def parse_content_dimension(value: str | None) -> dict:
     }
 
 
+# YouTube Shorts are capped at 3 minutes (60s before Oct 2024), so anything
+# longer is a regular upload without needing any further check.
+SHORTS_MAX_SECONDS = 180
+
+
+def check_is_short(video_id: str, client: httpx.Client | None = None) -> bool | None:
+    """Ask youtube.com whether a video is a Short (no Data API quota spent).
+
+    ``https://www.youtube.com/shorts/<id>`` answers 200 for a Short and
+    redirects to ``/watch?v=<id>`` for a regular video. Anything else (network
+    error, consent page, rate limit) returns None so callers fall back to the
+    duration heuristic instead of guessing."""
+    url = f"https://www.youtube.com/shorts/{video_id}"
+    try:
+        if client is None:
+            with httpx.Client(timeout=5.0) as c:
+                resp = c.head(url, follow_redirects=False)
+        else:
+            resp = client.head(url, follow_redirects=False)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code == 200:
+        return True
+    if resp.is_redirect and "/watch" in resp.headers.get("location", ""):
+        return False
+    return None
+
+
 def _to_int(value: str | None) -> int | None:
     try:
         return int(value)

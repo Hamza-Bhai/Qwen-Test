@@ -203,3 +203,23 @@ class TestSystemEndpoints:
         r = client.get("/api/v1/cache/stats")
         assert r.status_code == 200
         assert r.json()["entries"] >= 1
+
+
+class TestResolveShorts:
+    def test_long_videos_skip_check_and_known_answers_are_kept(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from app.services import channel_service
+
+        checked = []
+        monkeypatch.setattr(channel_service, "check_is_short",
+                            lambda vid, http: checked.append(vid) or vid == "short")
+        long_v = SimpleNamespace(youtube_video_id="long", duration_seconds=240, is_short=None)
+        known = SimpleNamespace(youtube_video_id="known", duration_seconds=50, is_short=False)
+        short = SimpleNamespace(youtube_video_id="short", duration_seconds=50, is_short=None)
+        regular = SimpleNamespace(youtube_video_id="regular", duration_seconds=90, is_short=None)
+
+        channel_service._resolve_shorts([long_v, known, short, regular])
+
+        assert sorted(checked) == ["regular", "short"]
+        assert (long_v.is_short, known.is_short, short.is_short, regular.is_short) == (False, False, True, False)

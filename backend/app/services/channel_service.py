@@ -5,8 +5,10 @@ tracking apply uniformly. This module only persists data that the API actually
 returned (rule #10).
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,7 +16,13 @@ from app.db.models import Channel, ChannelAnalysis, Video
 from app.services.cache import ResponseCache
 from app.services.quota import QuotaTracker
 from app.services.url_resolver import parse_channel_reference
-from app.services.youtube import YouTubeService, channel_payload_to_fields, video_payload_to_fields
+from app.services.youtube import (
+    SHORTS_MAX_SECONDS,
+    YouTubeService,
+    channel_payload_to_fields,
+    check_is_short,
+    video_payload_to_fields,
+)
 
 
 def _utcnow() -> datetime:
@@ -71,6 +79,24 @@ def add_channel(db: Session, identifier: str) -> Channel:
     return channel
 
 
+def _resolve_shorts(videos: list[Video]) -> None:
+    """Set ``is_short`` for each video. Longer than 3 min => never a Short;
+    shorter ones are checked once via youtube.com/shorts/<id> (a video's
+    format never changes, so a known answer is kept)."""
+    to_check = []
+    for video in videos:
+        if video.duration_seconds is not None and video.duration_seconds > SHORTS_MAX_SECONDS:
+            video.is_short = False
+        elif video.is_short is None:
+            to_check.append(video)
+    if not to_check:
+        return
+    with httpx.Client(timeout=5.0) as http, ThreadPoolExecutor(max_workers=8) as pool:
+        results = pool.map(lambda v: check_is_short(v.youtube_video_id, http), to_check)
+        for video, is_short in zip(to_check, results):
+            video.is_short = is_short
+
+
 def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dict:
     """Refresh channel stats + upsert its recent videos. Returns job detail dict."""
     service = get_service(db)
@@ -89,6 +115,7 @@ def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dic
     channel.channel_created_at = _parse_dt(fields["channel_created_at"]) or channel.channel_created_at
 
     upserted = 0
+    synced: list[Video] = []
     playlist_id = channel.uploads_playlist_id
     if playlist_id:
         for v_item in service.fetch_recent_videos(playlist_id, limit=video_limit):
@@ -113,7 +140,9 @@ def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dic
             video.like_count = vf["like_count"]
             video.comment_count = vf["comment_count"]
             video.last_synced_at = _utcnow()
+            synced.append(video)
             upserted += 1
+        _resolve_shorts(synced)
 
     channel.last_synced_at = _utcnow()
     db.commit()
