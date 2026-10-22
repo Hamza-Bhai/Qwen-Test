@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+yt_growth.db
+*.db
