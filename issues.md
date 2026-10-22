@@ -18,7 +18,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 5 | P1 | Fresh videos leak into format split & concentration | ✅ |
 | 6 | P1 | Upcoming premieres / live streams not filtered | ✅ |
 | 7 | P1 | Analysis limited to latest 50 videos | ✅ |
-| 8 | P1 | Shorts and long-form share one baseline | ✅ (partly, see below) |
+| 8 | P1 | Shorts and long-form share one baseline | ✅ |
 | 9 | P1 | Health score does not measure views | ☐ |
 | 10 | P1 | Views/day is biased against older videos | ☐ |
 | 11 | P1 | Overview and Audit use different video sets | ☐ |
@@ -123,13 +123,15 @@ Work through these one at a time. Tick the box and note the commit when fixed.
   max 500 videos ≈ 20 quota units).
 - **Test:** pagination follows `nextPageToken`, stops at date window / cap.
 
-## 8. [P1] Shorts and long-form share one baseline — ✅ fixed for rankings / outliers / topics
+## 8. [P1] Shorts and long-form share one baseline — ✅ fixed
 
 - **Done:** `vs_baseline_pct` per format (needs >= 3 mature videos of that format, else not judged);
   underperformers, outliers (Tukey fence per format) and keyword groups all use it.
   AXIOM: long-form underperformers 4 → 1 (the remaining one has 0 views); `protect`/`sunday` were
   "weak" only because they are long-form compared with Shorts — now +48% / +25% vs long-form.
-- **Still mixed:** recent-vs-history trend and distribution buckets use one channel median.
+- **Follow-up done:** recent-vs-history trend compares each format only with its own history
+  (weighted combined ratio; no same-format history → inconclusive); distribution buckets use each
+  video's own-format median. Health score reads the trend `ratio`.
 
 - **Where:** `rank_videos` baseline, underperformers, outliers, topic groups.
 - **Evidence (AXIOM):** Shorts median 0.75 views/day vs long-form 0.04; 4 of 10

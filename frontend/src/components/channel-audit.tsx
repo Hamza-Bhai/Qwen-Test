@@ -694,7 +694,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Performance distribution</CardTitle>
-            <p className="text-xs text-muted-foreground">Videos bucketed by views/day relative to the channel median.</p>
+            <p className="text-xs text-muted-foreground">Videos (7+ days old) bucketed by views/day relative to the median of their own format.</p>
           </CardHeader>
           <CardContent>
             {distData.length === 0 || distData.every((d) => d.videos === 0) ? (

@@ -114,9 +114,9 @@ FORMULAS: dict[str, str] = {
     "outlier": "views_per_day beyond Q3 + 3*IQR computed per format over MATURE videos only (robust Tukey fence; requires >= 8 mature videos of that format; no assumption of normality)",
     "top5_share_of_views": f"sum(views of top-5 MATURE videos by view_count) / total views of MATURE videos; needs >= 10 videos at least {MIN_AGE_DAYS_FOR_RANKING} days old",
     "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
-    "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
+    "recent_vs_history": f"per format: median views/day of MATURE uploads in the last {RECENT_WINDOW_DAYS} days / median of that format's older MATURE uploads; a format is compared only with >= 2 recent and >= 3 older videos; formats are never compared with each other; combined ratio = per-format ratios weighted by recent videos",
     "topic_groups": f"title words (>= {TOPIC_TOKEN_MIN_LEN} chars, not stopwords) shared by >= 3 MATURE videos; median of each video's views/day relative to its own format's baseline. Strong = >= +{TOPIC_MIN_DIFF_PCT:.0f}%, weak = <= -{TOPIC_MIN_DIFF_PCT:.0f}%; words in between are listed in neither",
-    "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
+    "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median of their own format (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
     "format_split": f"median views/day per estimated format group over MATURE videos (>= {MIN_AGE_DAYS_FOR_RANKING} days old); needs >= {FORMAT_SPLIT_MIN_PER_GROUP} mature videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
 }
 
@@ -396,6 +396,7 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
 
     shorts_ids, long_ids, unknown_ids = [], [], []
     shorts_views, long_views, shorts_vpd, long_vpd = [], [], [], []
+    mature_by_form: dict[str, list[float]] = {}
     for v in videos:
         form = classify_format(v.duration_seconds, cfg.short_max_seconds,
                                getattr(v, "is_short", None))
@@ -405,6 +406,8 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
         # Views/day of uploads under MIN_AGE_DAYS_FOR_RANKING is provisional
         # early traction; only mature videos enter the per-format medians.
         mature_vpd = (v.view_count or 0) / age if age and age >= MIN_AGE_DAYS_FOR_RANKING else None
+        if mature_vpd is not None:
+            mature_by_form.setdefault(form, []).append(mature_vpd)
         if form == "estimated-shorts":
             shorts_views.append(v.view_count or 0)
             if mature_vpd is not None:
@@ -414,26 +417,33 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
             if mature_vpd is not None:
                 long_vpd.append(mature_vpd)
 
-    # Distribution buckets by views/day vs the channel's own median views/day.
-    # MATURE videos only: a hours-old upload floored at age=1 day would get a
-    # provisional vpd that skews both the bucket baseline and its own placement.
-    mature_vpds = [
-        ((v.view_count or 0) / max(1, (now - _aware(v.published_at)).days))
-        for v in videos
-        if v.published_at
-        and max(1, (now - _aware(v.published_at)).days) >= MIN_AGE_DAYS_FOR_RANKING
-    ]
-    excluded_fresh = len(videos) - len(mature_vpds)
-    med_vpd = median(mature_vpds) if mature_vpds else None
+    # Distribution buckets: each MATURE video's views/day relative to the median
+    # of its OWN format (Shorts vs long-form differ by orders of magnitude).
+    # Fresh uploads have provisional vpd and are listed separately.
+    mature_count = sum(len(v) for v in mature_by_form.values())
+    excluded_fresh = len(videos) - mature_count
+    ratios: list[float] = []
+    no_baseline = 0
+    for vals in mature_by_form.values():
+        fmed = median(vals)
+        if len(vals) >= FORMAT_BASELINE_MIN_VIDEOS and fmed > 0:
+            ratios.extend(x / fmed for x in vals)
+        else:
+            no_baseline += len(vals)
     buckets = []
-    if med_vpd and med_vpd > 0 and len(mature_vpds) >= 3:
+    if len(ratios) >= 3:
         ranges = [(0.0, 0.5), (0.5, 0.8), (0.8, 1.2), (1.2, 2.0), (2.0, float("inf"))]
         labels = ["<50%", "50–80%", "80–120%", "120–200%", ">200%"]
         for (lo, hi), label in zip(ranges, labels):
-            count = sum(1 for x in mature_vpds if lo * med_vpd <= x < hi * med_vpd)
+            count = sum(1 for x in ratios if lo <= x < hi)
             buckets.append({"label": label, "videos": count})
     else:
-        buckets = [{"label": "insufficient mature data", "videos": len(mature_vpds)}]
+        buckets = [{"label": "insufficient mature data", "videos": len(ratios)}]
+    if no_baseline:
+        buckets.append({
+            "label": f"not bucketed (format has < {FORMAT_BASELINE_MIN_VIDEOS} mature videos)",
+            "videos": no_baseline,
+        })
     if excluded_fresh:
         buckets.append({
             "label": "excluded (<7 days old)",
@@ -773,31 +783,63 @@ def build_findings(
                                "inconclusive", ev,
                                ["Trend detection requires history that does not overlap the recent cohort."]))
         else:
-            rec_med = median(r.views_per_day for r in mature_recent)
-            hist_base = median([r.views_per_day for r in (older if len(older) >= 3 else independent_hist)])
-            ratio = _safe_div(rec_med, hist_base)
-            ev.update({"recent_median_vpd": round(rec_med, 2),
-                       "baseline_median_vpd": round(hist_base, 2) if hist_base else None,
+            # Compare each format only with its own history: a channel that
+            # recently added Shorts would otherwise look like a huge uptrend.
+            per_format: dict[str, dict[str, Any]] = {}
+            for form in sorted({r.form for r in mature_recent}):
+                rec_f = [r.views_per_day for r in mature_recent if r.form == form]
+                older_f = [r.views_per_day for r in older if r.form == form and r.mature]
+                indep_f = [r.views_per_day for r in independent_hist if r.form == form]
+                if len(rec_f) < 2 or len(indep_f) < 3:
+                    continue
+                rec_med_f = median(rec_f)
+                hist_med_f = median(older_f if len(older_f) >= 3 else indep_f)
+                ratio_f = _safe_div(rec_med_f, hist_med_f)
+                if ratio_f is None:
+                    continue
+                per_format[form] = {"recent_median_vpd": round(rec_med_f, 2),
+                                    "history_median_vpd": round(hist_med_f, 2),
+                                    "ratio": round(ratio_f, 3),
+                                    "recent_videos": len(rec_f), "history_videos": len(indep_f)}
+            ratio = None
+            if per_format:
+                weight = sum(p["recent_videos"] for p in per_format.values())
+                ratio = sum(p["ratio"] * p["recent_videos"] for p in per_format.values()) / weight
+            ev.update({"ratio": round(ratio, 3) if ratio is not None else None,
+                       "formats_compared": sorted(per_format),
+                       "per_format": per_format,
                        "mature_recent_videos": len(mature_recent)})
+            detail = "; ".join(
+                f"{f.replace('estimated-', '')} {p['recent_median_vpd']:.1f} vs {p['history_median_vpd']:.1f} views/day"
+                for f, p in per_format.items())
             effective = ratio
-            if effective is not None and effective < 0.6:
+            if ratio is None:
+                findings.append(_f("recent_trend", "Recent performance trend", "low", "inconclusive",
+                                   "No format has both >= 2 mature recent uploads and >= 3 older uploads of the "
+                                   "same format, and different formats are never compared with each other.",
+                                   "Re-audit once recent uploads have older same-format history to compare against.",
+                                   "inconclusive", ev,
+                                   ["Shorts and long-form earn views at very different rates; mixing them "
+                                    "would show a format shift as a performance trend."]))
+            elif effective < 0.6:
                 findings.append(_f("recent_trend", "Weak recent performance vs own history", "high", "detected",
                                    f"Mature videos from the last {cfg.recent_window_days} days earn {effective*100:.0f}% of the "
-                                   f"channel's own historical median views/day ({rec_med:.1f} vs {hist_base:.1f}). "
+                                   f"channel's own historical median views/day for the same format ({detail}). "
                                    f"Baseline: the channel's own videos. No statistical significance test is claimed.",
                                    "Review recent titles/topics/thumbnails against the channel's best-performing patterns.",
                                    "medium", ev,
                                    [f"Views/day keeps falling as videos age slowly; uploads under "
                                     f"{MIN_AGE_DAYS_FOR_RANKING} days old were excluded from this call.",
                                     "Public data cannot show whether the drop is demand-side or content-side — no causal claim is made."]))
-            elif effective is not None and effective > 1.5:
+            elif effective > 1.5:
                 findings.append(_f("recent_trend", "Recent uploads outperform history", "info", "detected",
-                                   f"Recent videos average {ratio*100:.0f}% of the historical views/day baseline.",
+                                   f"Recent videos earn {ratio*100:.0f}% of the same format's historical "
+                                   f"views/day ({detail}).",
                                    "Identify what changed and repeat it deliberately.", "medium", ev, []))
             else:
                 findings.append(_f("recent_trend", "Recent performance stable", "low", "ok",
-                                   f"Mature recent views/day sits within ±40% of the channel's own baseline "
-                                   f"({(ratio or 0)*100:.0f}%).",
+                                   f"Mature recent views/day sits within the channel's own same-format "
+                                   f"history ({ratio*100:.0f}%; {detail}).",
                                    "No action needed.", "medium", ev, []))
 
     # ---- 4. Dependence on a few popular videos ----
@@ -1018,8 +1060,8 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
             add("consistency", raw, note)
     # recent trend
     tr = next((f for f in findings if f.key == "recent_trend"), None)
-    if tr and tr.status != "inconclusive" and tr.evidence.get("recent_median_vpd") is not None:
-        ratio = tr.evidence["recent_median_vpd"] / tr.evidence["baseline_median_vpd"] if tr.evidence.get("baseline_median_vpd") else None
+    if tr and tr.status != "inconclusive":
+        ratio = tr.evidence.get("ratio")
         if ratio is not None:
             raw = min(1.0, max(0.0, ratio / 1.2))  # 120%+ of baseline => full marks
             add("recent_trend", raw, f"recent/history views-per-day ratio {ratio:.2f}")

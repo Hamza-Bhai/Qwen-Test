@@ -299,7 +299,7 @@ class TestHealthScore:
                            "evidence": {"median_gap_days": 7, "gaps_over_3x_median": 0,
                                         "total_gaps": 9, "observed_span_days": 63}})(),
             type("F", (), {"key": "recent_trend", "status": "ok",
-                           "evidence": {"recent_median_vpd": 100, "baseline_median_vpd": 100}})(),
+                           "evidence": {"ratio": 1.0}})(),
             type("F", (), {"key": "concentration", "status": "ok",
                            "evidence": {"top5_share_of_views": 0.3}})(),
         ]
@@ -567,7 +567,7 @@ class TestTrendCohortEligibility:
         tr = next(f for f in audit.findings if f.key == "recent_trend")
         assert tr.status != "inconclusive"
         assert tr.evidence["independent_history_videos"] >= 3
-        assert tr.evidence["recent_median_vpd"] is not None
+        assert tr.evidence["ratio"] is not None
         assert "recent_trend" in {c["name"] for c in audit.health_score.components}
 
     def test_overlapping_partial_history_still_needs_three_independent(self):
@@ -760,8 +760,7 @@ class TestInconclusiveFindingsNeverScored:
     def test_ok_status_with_zero_baseline_does_not_crash_or_score(self):
         perf = TestHealthScore()._perf()
         findings = [type("F", (), {"key": "recent_trend", "status": "ok",
-                                   "evidence": {"recent_median_vpd": 50.0,
-                                                "baseline_median_vpd": None}})()]
+                                   "evidence": {"ratio": None}})()]
         hs = compute_health_score(findings, perf, None, [_rank("a", 10)], NOW, CFG)
         names = {c["name"] for c in hs.components if c.get("score") is not None}
         assert "recent_trend" not in names
@@ -769,8 +768,7 @@ class TestInconclusiveFindingsNeverScored:
     def test_detected_status_with_both_medians_scores(self):
         perf = TestHealthScore()._perf()
         findings = [type("F", (), {"key": "recent_trend", "status": "detected",
-                                   "evidence": {"recent_median_vpd": 60.0,
-                                                "baseline_median_vpd": 100.0}})()]
+                                   "evidence": {"ratio": 0.6}})()]
         hs = compute_health_score(findings, perf, 100.0, [_rank("a", 10)], NOW, CFG)
         comp = next(c for c in hs.components if c["name"] == "recent_trend")
         assert comp["score"] == pytest.approx(50.0, abs=0.1)  # 0.6/1.2*100
@@ -958,3 +956,35 @@ class TestPerFormatBaseline:
         longs = [self._vid(f"l{i}", 5, 900, title=f"bravo story {i}") for i in range(5)]
         strong, weak = group_topics(rank_videos(shorts + longs, CFG, NOW)[0])
         assert strong == [] and weak == []
+
+
+class TestTrendAndDistributionPerFormat:
+    """Issue #8 follow-up: a channel that recently added Shorts must not look
+    like it "outperforms history", and distribution buckets compare each video
+    with its own format's median."""
+
+    @staticmethod
+    def _vid(vid, vpd, days_ago, duration):
+        return FakeVideo(vid=vid, views=int(vpd * days_ago), days_ago=days_ago, duration=duration)
+
+    def test_new_shorts_do_not_fake_an_uptrend(self):
+        hist = [self._vid(f"h{i}", 10, 200 + i * 10, 900) for i in range(6)]
+        rec_long = [self._vid(f"l{i}", 10, 20 + i, 900) for i in range(3)]
+        rec_shorts = [self._vid(f"s{i}", 1000, 20 + i, 40) for i in range(4)]
+        tr = next(f for f in _run_audit_on(hist + rec_long + rec_shorts).findings if f.key == "recent_trend")
+        assert tr.status == "ok"
+        assert tr.evidence["ratio"] == pytest.approx(1.0)
+        assert tr.evidence["formats_compared"] == ["estimated-longform"]
+
+    def test_format_without_history_is_inconclusive(self):
+        hist = [self._vid(f"h{i}", 10, 200 + i * 10, 900) for i in range(6)]
+        rec_shorts = [self._vid(f"s{i}", 1000, 20 + i, 40) for i in range(4)]
+        tr = next(f for f in _run_audit_on(hist + rec_shorts).findings if f.key == "recent_trend")
+        assert tr.status == "inconclusive"
+        assert "same format" in tr.explanation
+
+    def test_distribution_buckets_use_own_format_median(self):
+        vids = [self._vid(f"s{i}", 100, 20, 40) for i in range(5)]              + [self._vid(f"l{i}", 5, 20, 900) for i in range(5)]
+        perf = compute_performance(vids, CFG, NOW)
+        mid = next(b for b in perf.distribution_buckets if b["label"] == "80–120%")
+        assert mid["videos"] == 10
