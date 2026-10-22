@@ -15,7 +15,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 2 | P0 | GET `/audit` writes history rows (duplicates) | ✅ `0a83ba1` |
 | 3 | P0 | No auth / rate limit on mutating endpoints | ☐ |
 | 4 | P1 | Same keyword in Strong AND Weak topics | ✅ |
-| 5 | P1 | Fresh videos leak into format split & concentration | ☐ |
+| 5 | P1 | Fresh videos leak into format split & concentration | ✅ |
 | 6 | P1 | Upcoming premieres / live streams not filtered | ☐ |
 | 7 | P1 | Analysis limited to latest 50 videos | ☐ |
 | 8 | P1 | Shorts and long-form share one baseline | ☐ |
@@ -85,7 +85,10 @@ Work through these one at a time. Tick the box and note the commit when fixed.
   below (e.g. `pct < −20`); lists must be disjoint.
 - **Test:** with ≤ 5 groups, no topic appears in both lists; strong never has negative pct.
 
-## 5. [P1] Fresh videos leak into format split & concentration
+## 5. [P1] Fresh videos leak into format split & concentration — ✅ fixed
+
+- **Done:** per-format median vpd, format_split / format_mismatch counts and concentration use
+  mature videos (≥ 7 days) only. DPCcars: both findings now `inconclusive` (0 of 50 mature).
 
 - **Where:** format vpd in `compute_performance` ([audit.py:389](backend/app/analytics/audit.py#L389)) and
   concentration finding ([audit.py:765](backend/app/analytics/audit.py#L765)) use all videos, not mature ones.

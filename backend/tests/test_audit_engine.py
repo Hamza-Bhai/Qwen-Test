@@ -833,3 +833,34 @@ class TestCheckIsShort:
         c = httpx.Client(transport=httpx.MockTransport(boom))
         assert check_is_short("abcdefghijk", c) is None
 
+
+
+class TestFreshVideosExcludedFromFormatAndConcentration:
+    """Issue #5: videos under 7 days old have provisional views/day only, so
+    they must not drive the format split or the view-concentration finding."""
+
+    def _finding(self, audit, key):
+        return next(f for f in audit.findings if f.key == key)
+
+    def test_all_fresh_window_is_inconclusive(self):
+        # DPCcars-like: every analyzed upload is a few days old.
+        vids = [FakeVideo(vid=f"s{i}", views=50_000 if i == 0 else 2_000, days_ago=2, duration=40)
+                for i in range(12)] \
+             + [FakeVideo(vid=f"l{i}", views=1_000, days_ago=3, duration=900) for i in range(12)]
+        audit = _run_audit_on(vids)
+        assert self._finding(audit, "format_split").status == "inconclusive"
+        assert self._finding(audit, "concentration").status == "inconclusive"
+
+    def test_format_median_vpd_ignores_fresh_uploads(self):
+        mature = [FakeVideo(vid=f"m{i}", views=300, days_ago=30, duration=40) for i in range(2)]
+        fresh = [FakeVideo(vid=f"f{i}", views=900_000, days_ago=1, duration=40) for i in range(3)]
+        perf = compute_performance(mature + fresh, CFG, NOW)
+        assert perf.shorts_median_vpd == pytest.approx(10.0)
+
+    def test_concentration_uses_mature_videos_only(self):
+        # One fresh viral upload must not make the channel look "dependent".
+        mature = [FakeVideo(vid=f"m{i}", views=1_000, days_ago=20 + i) for i in range(12)]
+        fresh = [FakeVideo(vid="viral", views=5_000_000, days_ago=1)]
+        conc = self._finding(_run_audit_on(mature + fresh), "concentration")
+        assert conc.status == "ok"
+        assert conc.evidence["mature_videos"] == 12

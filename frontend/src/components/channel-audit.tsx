@@ -743,7 +743,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
                 </ResponsiveContainer>
               </div>
               <p className="mt-2 text-xs tabular-nums text-muted-foreground">
-                Age-normalized median views/day: Estimated Shorts {formatDecimal(perf.shorts_median_vpd)} · Estimated
+                Age-normalized median views/day (videos 7+ days old): Estimated Shorts {formatDecimal(perf.shorts_median_vpd)} · Estimated
                 long-form {formatDecimal(perf.longform_median_vpd)}
               </p>
               {/* Surface the backend's own conclusion status for the format

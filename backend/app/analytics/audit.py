@@ -102,12 +102,12 @@ FORMULAS: dict[str, str] = {
     "top_performers": "mature videos ranked by views_per_day, top 10 (fresh uploads excluded — their floored age exaggerates vpd)",
     "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below the channel's own mature-median views/day baseline",
     "outlier": "views_per_day beyond Q3 + 3*IQR computed over MATURE videos only (robust Tukey fence; requires >= 8 mature videos; no assumption of normality)",
-    "top5_share_of_views": "sum(views of top-5 videos by view_count) / total_views",
+    "top5_share_of_views": f"sum(views of top-5 MATURE videos by view_count) / total views of MATURE videos; needs >= 10 videos at least {MIN_AGE_DAYS_FOR_RANKING} days old",
     "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
     "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
     "topic_groups": f"title words (>= {TOPIC_TOKEN_MIN_LEN} chars, not stopwords) shared by >= 3 MATURE videos; median views/day vs the channel baseline. Strong = >= +{TOPIC_MIN_DIFF_PCT:.0f}%, weak = <= -{TOPIC_MIN_DIFF_PCT:.0f}%; words in between are listed in neither",
     "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
-    "format_split": f"median views/day per estimated format group; needs >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
+    "format_split": f"median views/day per estimated format group over MATURE videos (>= {MIN_AGE_DAYS_FOR_RANKING} days old); needs >= {FORMAT_SPLIT_MIN_PER_GROUP} mature videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
 }
 
 WEIGHTS: dict[str, float] = {
@@ -389,14 +389,19 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
         form = classify_format(v.duration_seconds, cfg.short_max_seconds,
                                getattr(v, "is_short", None))
         {"estimated-shorts": shorts_ids, "estimated-longform": long_ids, "unknown": unknown_ids}[form].append(v)
-        age = max(1, (now - (_aware(v.published_at) or now)).days)
-        vpd = (v.view_count or 0) / age
+        pub = _aware(v.published_at)
+        age = max(1, (now - pub).days) if pub else None
+        # Views/day of uploads under MIN_AGE_DAYS_FOR_RANKING is provisional
+        # early traction; only mature videos enter the per-format medians.
+        mature_vpd = (v.view_count or 0) / age if age and age >= MIN_AGE_DAYS_FOR_RANKING else None
         if form == "estimated-shorts":
             shorts_views.append(v.view_count or 0)
-            shorts_vpd.append(vpd)
+            if mature_vpd is not None:
+                shorts_vpd.append(mature_vpd)
         elif form == "estimated-longform":
             long_views.append(v.view_count or 0)
-            long_vpd.append(vpd)
+            if mature_vpd is not None:
+                long_vpd.append(mature_vpd)
 
     # Distribution buckets by views/day vs the channel's own median views/day.
     # MATURE videos only: a hours-old upload floored at age=1 day would get a
@@ -767,15 +772,22 @@ def build_findings(
                                    "No action needed.", "medium", ev, []))
 
     # ---- 4. Dependence on a few popular videos ----
-    if n < 10:
+    # Mature videos only: a days-old upload's view total is still climbing, so
+    # it can neither prove nor disprove dependence on a few hits.
+    mature_views = [r.view_count for r in rows if r.mature]
+    if len(mature_views) < 10:
         findings.append(_f("concentration", "Dependence on top videos", "low", "inconclusive",
-                           f"Need >=10 videos to measure view concentration meaningfully (have {n}).",
-                           "Analyze more videos.", "inconclusive", {}, limits_small))
+                           f"Need >=10 videos at least {MIN_AGE_DAYS_FOR_RANKING} days old to measure view "
+                           f"concentration meaningfully (have {len(mature_views)} of {n}).",
+                           "Re-audit once more uploads are at least a week old.", "inconclusive",
+                           {"mature_videos": len(mature_views), "analyzed": n}, limits_small))
     else:
-        top5 = sorted((r.view_count for r in rows), reverse=True)[:5]
-        share = _safe_div(sum(top5), perf.total_views)
+        mature_total = sum(mature_views)
+        top5 = sorted(mature_views, reverse=True)[:5]
+        share = _safe_div(sum(top5), mature_total)
         ev = {"top5_share_of_views": round(share, 3) if share is not None else None,
-              "total_views_analyzed": perf.total_views}
+              "total_views_analyzed": mature_total,
+              "mature_videos": len(mature_views)}
         if share is not None and share > cfg.concentration_high:
             findings.append(_f("concentration", "Heavy dependence on a few popular videos", "medium", "detected",
                                f"The top 5 videos hold {share*100:.0f}% of all views in the analyzed set "
@@ -828,20 +840,26 @@ def build_findings(
 
     # ---- 7. Shorts vs long-form ----
     fmt_limits = [f"Format comes from YouTube's /shorts/<id> URL check where it succeeded, otherwise "
-                  f"from duration <= {cfg.short_max_seconds}s; the Data API itself exposes no Shorts flag."]
-    if perf.shorts_count < FORMAT_SPLIT_MIN_PER_GROUP or perf.longform_count < FORMAT_SPLIT_MIN_PER_GROUP:
+                  f"from duration <= {cfg.short_max_seconds}s; the Data API itself exposes no Shorts flag.",
+                  f"Only videos at least {MIN_AGE_DAYS_FOR_RANKING} days old are compared; newer uploads have "
+                  "provisional views/day."]
+    # Mature counts: the per-format medians are computed over mature videos only.
+    s_n = sum(1 for r in rows if r.mature and r.form == "estimated-shorts")
+    l_n = sum(1 for r in rows if r.mature and r.form == "estimated-longform")
+    if s_n < FORMAT_SPLIT_MIN_PER_GROUP or l_n < FORMAT_SPLIT_MIN_PER_GROUP:
         findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
-                           f"Need >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per format to compare medians "
-                           f"(estimated shorts={perf.shorts_count}, estimated long-form={perf.longform_count}).",
+                           f"Need >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per format, each at least "
+                           f"{MIN_AGE_DAYS_FOR_RANKING} days old, to compare medians "
+                           f"(mature estimated shorts={s_n}, mature estimated long-form={l_n}).",
                            "Publish (or sync) more of each format, then re-audit.", "inconclusive",
-                           {"shorts": perf.shorts_count, "long": perf.longform_count,
+                           {"shorts": s_n, "long": l_n,
                             "min_per_group": FORMAT_SPLIT_MIN_PER_GROUP},
                            fmt_limits))
     else:
         s_vpd, l_vpd = perf.shorts_median_vpd, perf.longform_median_vpd
-        imbalance = max(perf.shorts_count, perf.longform_count) / max(1, min(perf.shorts_count, perf.longform_count))
+        imbalance = max(s_n, l_n) / max(1, min(s_n, l_n))
         ev = {"shorts_median_vpd": s_vpd, "longform_median_vpd": l_vpd,
-              "shorts_count": perf.shorts_count, "longform_count": perf.longform_count,
+              "shorts_count": s_n, "longform_count": l_n,
               "group_size_imbalance": round(imbalance, 1),
               "max_supported_imbalance": FORMAT_SPLIT_MAX_IMBALANCE}
         both = [x for x in (s_vpd, l_vpd) if x and x > 0]
@@ -850,12 +868,12 @@ def build_findings(
                                "Duration metadata missing on too many videos.", "Re-sync to refresh durations.",
                                "inconclusive", ev, fmt_limits))
         elif imbalance > FORMAT_SPLIT_MAX_IMBALANCE:
-            smaller = "Shorts" if perf.shorts_count < perf.longform_count else "long-form"
+            smaller = "Shorts" if s_n < l_n else "long-form"
             findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",
                                f"The formats are too imbalanced to compare fairly "
-                               f"({perf.shorts_count} estimated Shorts vs {perf.longform_count} estimated "
+                               f"({s_n} estimated Shorts vs {l_n} estimated "
                                f"long-form, a {imbalance:.0f}:1 split). The median of a {smaller}-only "
-                               f"{min(perf.shorts_count, perf.longform_count)}-video sample reflects a few "
+                               f"{min(s_n, l_n)}-video sample reflects a few "
                                "uploads, not a format trend, so no production-allocation recommendation "
                                "is made.",
                                f"Treat the current numbers as descriptive only. Re-audit once at least "
@@ -887,8 +905,8 @@ def build_findings(
 
     # ---- 8. Format-mismatch opportunity ----
     if (not small_sample and baseline and baseline > 0
-            and perf.shorts_count >= FORMAT_SPLIT_MIN_PER_GROUP
-            and perf.longform_count >= FORMAT_SPLIT_MIN_PER_GROUP):
+            and s_n >= FORMAT_SPLIT_MIN_PER_GROUP
+            and l_n >= FORMAT_SPLIT_MIN_PER_GROUP):
         weaker_is_shorts = (perf.shorts_median_vpd or 0) < (perf.longform_median_vpd or 0)
         weaker_fmt = "Shorts" if weaker_is_shorts else "Long-form"
         stronger = "long-form" if weaker_is_shorts else "Shorts"
