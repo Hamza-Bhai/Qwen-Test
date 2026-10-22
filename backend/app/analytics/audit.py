@@ -65,6 +65,8 @@ CONCENTRATION_HIGH = 0.60           # top-5 share above which dependence flagged
 OUTLIER_IQR_K = 3.0                 # Tukey-fence multiplier for vpd outliers
 TOPIC_TOKEN_MIN_LEN = 4             # ignore tiny words when grouping topics
 TOPIC_MIN_DIFF_PCT = 20.0           # keyword must beat/trail the baseline by
+FORMAT_BASELINE_MIN_VIDEOS = 3      # mature videos a format needs for its own
+                                    # baseline; fewer => its videos are not judged
                                     # >= 20% to be listed as strong/weak
 MIN_AGE_DAYS_FOR_RANKING = 7        # videos younger than this have provisional
                                     # traction only (excluded from top/under/outliers)
@@ -107,12 +109,13 @@ FORMULAS: dict[str, str] = {
     "mature_video": f"a video with a known publish date at least {MIN_AGE_DAYS_FOR_RANKING} days old; only mature videos enter the baseline median, top/underperformer lists, outlier detection, distribution buckets and topic grouping",
     "fresh_video_provisional": f"published < {MIN_AGE_DAYS_FOR_RANKING} days ago (or undated): shown separately as provisional early traction, never ranked or compared against settled performance",
     "top_performers": "mature videos ranked by views_per_day, top 10 (fresh uploads excluded — their floored age exaggerates vpd)",
-    "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below the channel's own mature-median views/day baseline",
-    "outlier": "views_per_day beyond Q3 + 3*IQR computed over MATURE videos only (robust Tukey fence; requires >= 8 mature videos; no assumption of normality)",
+    "format_baseline": f"median views/day of MATURE videos of the same format (Shorts vs long-form); a format needs >= {FORMAT_BASELINE_MIN_VIDEOS} mature videos, otherwise its videos get no baseline and are not judged",
+    "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below their own format's baseline",
+    "outlier": "views_per_day beyond Q3 + 3*IQR computed per format over MATURE videos only (robust Tukey fence; requires >= 8 mature videos of that format; no assumption of normality)",
     "top5_share_of_views": f"sum(views of top-5 MATURE videos by view_count) / total views of MATURE videos; needs >= 10 videos at least {MIN_AGE_DAYS_FOR_RANKING} days old",
     "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
     "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
-    "topic_groups": f"title words (>= {TOPIC_TOKEN_MIN_LEN} chars, not stopwords) shared by >= 3 MATURE videos; median views/day vs the channel baseline. Strong = >= +{TOPIC_MIN_DIFF_PCT:.0f}%, weak = <= -{TOPIC_MIN_DIFF_PCT:.0f}%; words in between are listed in neither",
+    "topic_groups": f"title words (>= {TOPIC_TOKEN_MIN_LEN} chars, not stopwords) shared by >= 3 MATURE videos; median of each video's views/day relative to its own format's baseline. Strong = >= +{TOPIC_MIN_DIFF_PCT:.0f}%, weak = <= -{TOPIC_MIN_DIFF_PCT:.0f}%; words in between are listed in neither",
     "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
     "format_split": f"median views/day per estimated format group over MATURE videos (>= {MIN_AGE_DAYS_FOR_RANKING} days old); needs >= {FORMAT_SPLIT_MIN_PER_GROUP} mature videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
 }
@@ -511,36 +514,55 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
                 mature=pub is not None and age >= MIN_AGE_DAYS_FOR_RANKING,
             )
         )
-    # Baseline uses MATURE videos only. Including a hours-old upload whose
+    # Baselines use MATURE videos only. Including a hours-old upload whose
     # views/day is floored at 1 day would drag the median around and make its
     # own provisional traction look comparable to settled performance.
     vpds = sorted(r.views_per_day for r in rows if r.mature)
     base = median(vpds) if vpds else None
+    # Each video is compared with its OWN format: Shorts and long-form views/day
+    # differ by orders of magnitude, so one mixed median would brand a whole
+    # format as under- or over-performing.
+    by_format = format_baselines(rows)
     for r in rows:
-        if base and base > 0:
-            r.vs_baseline_pct = round((r.views_per_day / base - 1.0) * 100.0, 1)
+        fb = by_format.get(r.form)
+        if fb and fb > 0:
+            r.vs_baseline_pct = round((r.views_per_day / fb - 1.0) * 100.0, 1)
     return rows, base
 
 
-def detect_outliers(rows: list[VideoRanking]) -> list[VideoRanking]:
-    mature = [r for r in rows if r.mature]
-    if len(mature) < 8:  # fences meaningless on tiny samples
-        return []
-    vpds = sorted(r.views_per_day for r in mature)
-    q1, q3 = _quantiles(vpds)
-    iqr = q3 - q1
-    if iqr <= 0:
-        return []
-    upper = q3 + OUTLIER_IQR_K * iqr
-    return sorted((r for r in mature if r.views_per_day > upper), key=lambda r: -r.views_per_day)[:5]
-
-
-def group_topics(rows: list[VideoRanking], baseline: float | None) -> tuple[list[TopicGroup], list[TopicGroup]]:
-    groups: dict[str, list[VideoRanking]] = {}
-    # Topic strength uses MATURE videos only — a fresh upload's provisional
-    # views/day must not decide whether a keyword looks "strong" or "weak".
+def format_baselines(rows: list[VideoRanking]) -> dict[str, float]:
+    """Median mature views/day per format, for formats with enough videos."""
+    groups: dict[str, list[float]] = {}
     for r in rows:
-        if not r.mature:
+        if r.mature:
+            groups.setdefault(r.form, []).append(r.views_per_day)
+    return {form: median(v) for form, v in groups.items() if len(v) >= FORMAT_BASELINE_MIN_VIDEOS}
+
+
+def detect_outliers(rows: list[VideoRanking]) -> list[VideoRanking]:
+    """Tukey fence per format, so a hit long-form video is not hidden among
+    Shorts (or every Short flagged against long-form numbers)."""
+    found: list[VideoRanking] = []
+    for form in {r.form for r in rows}:
+        mature = [r for r in rows if r.mature and r.form == form]
+        if len(mature) < 8:  # fences meaningless on tiny samples
+            continue
+        q1, q3 = _quantiles(sorted(r.views_per_day for r in mature))
+        iqr = q3 - q1
+        if iqr <= 0:
+            continue
+        upper = q3 + OUTLIER_IQR_K * iqr
+        found.extend(r for r in mature if r.views_per_day > upper)
+    return sorted(found, key=lambda r: -(r.vs_baseline_pct or 0))[:5]
+
+
+def group_topics(rows: list[VideoRanking]) -> tuple[list[TopicGroup], list[TopicGroup]]:
+    groups: dict[str, list[VideoRanking]] = {}
+    # Topic strength uses MATURE videos with a format baseline only — a fresh
+    # upload's provisional views/day must not decide whether a keyword looks
+    # "strong" or "weak", and each video counts relative to its own format.
+    for r in rows:
+        if not r.mature or r.vs_baseline_pct is None:
             continue
         for tok in set(_topic_tokens(r.title)):
             groups.setdefault(tok, []).append(r)
@@ -549,7 +571,8 @@ def group_topics(rows: list[VideoRanking], baseline: float | None) -> tuple[list
         if len(vids) < 3:  # need repetition before calling something a "topic"
             continue
         med = median(v.views_per_day for v in vids)
-        pct = round((med / baseline - 1.0) * 100.0, 1) if baseline and baseline > 0 else None
+        rel = median(1.0 + v.vs_baseline_pct / 100.0 for v in vids)
+        pct = round((rel - 1.0) * 100.0, 1)
         scored.append(
             TopicGroup(
                 topic=topic,
@@ -562,12 +585,10 @@ def group_topics(rows: list[VideoRanking], baseline: float | None) -> tuple[list
     # A keyword is "strong"/"weak" only when it is clearly above/below the
     # baseline, so the lists are disjoint and a below-baseline word can never
     # be shown as strong. No baseline => no claim either way.
-    strong = sorted((g for g in scored if g.vs_channel_baseline_pct is not None
-                     and g.vs_channel_baseline_pct >= TOPIC_MIN_DIFF_PCT),
-                    key=lambda g: -g.median_views_per_day)[:5]
-    weak = sorted((g for g in scored if g.vs_channel_baseline_pct is not None
-                   and g.vs_channel_baseline_pct <= -TOPIC_MIN_DIFF_PCT),
-                  key=lambda g: g.median_views_per_day)[:5]
+    strong = sorted((g for g in scored if g.vs_channel_baseline_pct >= TOPIC_MIN_DIFF_PCT),
+                    key=lambda g: -g.vs_channel_baseline_pct)[:5]
+    weak = sorted((g for g in scored if g.vs_channel_baseline_pct <= -TOPIC_MIN_DIFF_PCT),
+                  key=lambda g: g.vs_channel_baseline_pct)[:5]
     return strong, weak
 
 
@@ -1115,7 +1136,7 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
     perf = compute_performance(videos, cfg, now)
     rows, baseline = rank_videos(videos, cfg, now)
     outliers = detect_outliers(rows)
-    strong, weak = group_topics(rows, baseline)
+    strong, weak = group_topics(rows)
     findings = build_findings(videos, rows, perf, baseline, outliers, cfg, now)
     score = compute_health_score(findings, perf, baseline, rows, now, cfg)
 

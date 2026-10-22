@@ -127,7 +127,8 @@ class TestAgeNormalization:
     def test_same_views_different_age_gives_different_vpd(self):
         old = FakeVideo(vid="old", views=10_000, days_ago=100)
         new = FakeVideo(vid="new", views=10_000, days_ago=10)
-        rows, base = rank_videos([old, new], CFG, NOW)
+        mid = FakeVideo(vid="mid", views=10_000, days_ago=40)  # 3rd video: format baseline needs >= 3
+        rows, base = rank_videos([old, new, mid], CFG, NOW)
         by_id = {r.youtube_video_id: r for r in rows}
         assert by_id["new"].views_per_day == 1000.0
         assert by_id["old"].views_per_day == 100.0
@@ -217,6 +218,13 @@ class TestFormatClassification:
 
 
 # ------------------------------------------------------------------- topics
+def _against(rows, baseline):
+    """Set each row's vs_baseline_pct as rank_videos would for its format."""
+    for r in rows:
+        r.vs_baseline_pct = None if baseline is None else (r.views_per_day / baseline - 1.0) * 100.0
+    return rows
+
+
 class TestTopicGrouping:
     def test_repeated_token_forms_group_with_baseline(self):
         rows = [
@@ -226,7 +234,7 @@ class TestTopicGrouping:
         for i, t in enumerate(("drone review one", "drone review two", "drone review three",
                                "cooking basics", "cooking tips")):
             rows[i].title = t
-        strong, weak = group_topics(rows, baseline=30.0)
+        strong, weak = group_topics(_against(rows, 30.0))
         drone = next(g for g in strong if g.topic == "drone")
         assert drone.videos == 3
         assert drone.vs_channel_baseline_pct == pytest.approx((55 / 30 - 1) * 100, abs=0.2)
@@ -234,7 +242,7 @@ class TestTopicGrouping:
     def test_min_three_videos_required(self):
         rows = [_rank("a", 50), _rank("b", 60)]
         rows[0].title = rows[1].title = "quantum thing"
-        strong, weak = group_topics(rows, baseline=55.0)
+        strong, weak = group_topics(_against(rows, 55.0))
         assert all(g.topic != "quantum" for g in strong + weak)
 
     @staticmethod
@@ -250,7 +258,7 @@ class TestTopicGrouping:
         return rows
 
     def test_strong_and_weak_are_disjoint_and_signed(self):
-        strong, weak = group_topics(self._three_groups(), baseline=30.0)
+        strong, weak = group_topics(_against(self._three_groups(), 30.0))
         assert [g.topic for g in strong] == ["drone"]
         assert [g.topic for g in weak] == ["cooking"]
         assert not {g.topic for g in strong} & {g.topic for g in weak}
@@ -258,11 +266,11 @@ class TestTopicGrouping:
         assert all(g.vs_channel_baseline_pct < 0 for g in weak)
 
     def test_near_baseline_topic_is_neither(self):
-        strong, weak = group_topics(self._three_groups(), baseline=30.0)
+        strong, weak = group_topics(_against(self._three_groups(), 30.0))
         assert all(g.topic != "travel" for g in strong + weak)
 
     def test_no_baseline_means_no_strong_or_weak_claims(self):
-        strong, weak = group_topics(self._three_groups(), baseline=None)
+        strong, weak = group_topics(_against(self._three_groups(), None))
         assert strong == [] and weak == []
 
 
@@ -909,3 +917,44 @@ class TestAnalysisWindow:
         vids = [FakeVideo(vid=f"n{i}", views=100, days_ago=i + 0.5) for i in range(50)]
         audit = _run_audit_on(vids)  # FakeChannel.video_count == 50
         assert audit.coverage["window_incomplete"] is False
+
+
+class TestPerFormatBaseline:
+    """Issue #8: Shorts and long-form are judged against their own format's
+    median views/day, never against one mixed baseline."""
+
+    @staticmethod
+    def _vid(vid, vpd, duration, title="Some title here"):
+        return FakeVideo(vid=vid, views=int(vpd * 10), days_ago=10, duration=duration, title=title)
+
+    def test_each_format_at_its_own_median_is_not_underperforming(self):
+        shorts = [self._vid(f"s{i}", 100, 40) for i in range(10)]
+        longs = [self._vid(f"l{i}", 5, 900) for i in range(10)]
+        rows, _ = rank_videos(shorts + longs, CFG, NOW)
+        assert all(r.vs_baseline_pct == 0 for r in rows)
+        assert _run_audit_on(shorts + longs).underperformers == []
+
+    def test_long_video_judged_against_long_form_median(self):
+        shorts = [self._vid(f"s{i}", 100, 40) for i in range(10)]
+        longs = [self._vid(f"l{i}", 5, 900) for i in range(9)] + [self._vid("weak", 1, 900)]
+        under = _run_audit_on(shorts + longs).underperformers
+        assert [r.youtube_video_id for r in under] == ["weak"]
+        assert under[0].vs_baseline_pct == pytest.approx(-80.0)
+
+    def test_format_with_too_few_mature_videos_gets_no_baseline(self):
+        shorts = [self._vid(f"s{i}", 100, 40) for i in range(10)]
+        longs = [self._vid(f"l{i}", 5, 900) for i in range(2)]
+        rows, _ = rank_videos(shorts + longs, CFG, NOW)
+        assert all(r.vs_baseline_pct is None for r in rows if r.form == "estimated-longform")
+
+    def test_outlier_found_within_its_own_format(self):
+        shorts = [self._vid(f"s{i}", 100, 40) for i in range(10)]
+        longs = [self._vid(f"l{i}", v, 900) for i, v in enumerate([4, 5, 6] * 3)] + [self._vid("hit", 60, 900)]
+        outliers = detect_outliers(rank_videos(shorts + longs, CFG, NOW)[0])
+        assert [r.youtube_video_id for r in outliers] == ["hit"]
+
+    def test_topics_compare_within_format(self):
+        shorts = [self._vid(f"s{i}", 100, 40, title=f"alpha clip {i}") for i in range(5)]
+        longs = [self._vid(f"l{i}", 5, 900, title=f"bravo story {i}") for i in range(5)]
+        strong, weak = group_topics(rank_videos(shorts + longs, CFG, NOW)[0])
+        assert strong == [] and weak == []

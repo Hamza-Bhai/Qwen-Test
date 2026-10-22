@@ -327,7 +327,7 @@ function TopicList({ topics, kind }: { topics: AuditTopicGroup[]; kind: "strong"
   if (topics.length === 0) {
     return (
       <p className="py-4 text-center text-sm text-muted-foreground">
-        No repeated title keyword is {kind === "strong" ? "20%+ above" : "20%+ below"} the channel baseline.
+        No repeated title keyword is {kind === "strong" ? "20%+ above" : "20%+ below"} their format&apos;s baseline.
       </p>
     );
   }
@@ -348,7 +348,7 @@ function TopicList({ topics, kind }: { topics: AuditTopicGroup[]; kind: "strong"
                   : "text-emerald-600"
               }
             >
-              {formatPct(t.vs_channel_baseline_pct)} vs channel baseline
+              {formatPct(t.vs_channel_baseline_pct)} vs own-format baseline
             </span>
           </p>
           {t.example_titles.length > 0 && (
@@ -812,14 +812,14 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           icon={<TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
           videos={audit.top_performers}
           emptyText="No ranked videos yet."
-          baselineLabel="vs median views/day baseline"
+          baselineLabel="vs own-format median views/day"
         />
         <RankingCard
           title="Underperformers"
           icon={<TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" />}
           videos={audit.underperformers}
           emptyText="No videos fall clearly below the baseline."
-          baselineLabel="vs median views/day baseline"
+          baselineLabel="vs own-format median views/day"
         />
       </div>
 
@@ -829,7 +829,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           icon={<AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />}
           videos={audit.outliers}
           emptyText=""
-          baselineLabel="vs median views/day baseline"
+          baselineLabel="vs own-format median views/day"
         />
       )}
 
@@ -868,7 +868,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
               <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Recurring strong title keywords
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Words in 3+ titles whose median views/day is at least 20% above the channel baseline — lexical
+              Words in 3+ titles whose median views/day is at least 20% above their own format&apos;s baseline (Shorts vs Shorts, long-form vs long-form) — lexical
               grouping, not a semantic-topic verdict.
             </p>
           </CardHeader>
@@ -882,7 +882,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
               <TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" /> Consistently weak title keywords
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Words in 3+ titles whose median views/day is at least 20% below the channel baseline; ambiguous
+              Words in 3+ titles whose median views/day is at least 20% below their own format&apos;s baseline; ambiguous
               words and synonyms are not distinguished.
             </p>
           </CardHeader>
