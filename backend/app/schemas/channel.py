@@ -189,3 +189,4 @@ class ChannelAuditRead(BaseModel):
     unavailable_metrics: list[str] = []
     confidence_rules: dict = {}
     data_freshness: dict = {}
+    coverage: dict = {}

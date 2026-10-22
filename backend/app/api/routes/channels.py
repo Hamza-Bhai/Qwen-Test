@@ -126,11 +126,7 @@ def channel_overview(channel_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{channel_id}/audit", response_model=ChannelAuditRead)
-def channel_audit(
-    channel_id: int,
-    limit: int = Query(default=50, ge=1, le=200),
-    db: Session = Depends(get_db),
-):
+def channel_audit(channel_id: int, db: Session = Depends(get_db)):
     """Phase-2 rule-based channel audit. Read-only: never writes history.
 
     Pure DB reads — zero YouTube quota. Every finding ships with evidence,
@@ -139,20 +135,16 @@ def channel_audit(
     channel = channel_service.get_channel_by_pk(db, channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
-    return audit_service.audit_channel(db, channel, limit=limit)
+    return audit_service.audit_channel(db, channel)
 
 
 @router.post("/{channel_id}/audit", response_model=ChannelAuditRead)
-def rerun_channel_audit(
-    channel_id: int,
-    limit: int = Query(default=50, ge=1, le=200),
-    db: Session = Depends(get_db),
-):
+def rerun_channel_audit(channel_id: int, db: Session = Depends(get_db)):
     """Explicit 'Re-run audit' action: same audit, plus one 'audit' history row."""
     channel = channel_service.get_channel_by_pk(db, channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
-    return audit_service.audit_channel(db, channel, limit=limit, persist=True)
+    return audit_service.audit_channel(db, channel, persist=True)
 
 
 @router.get("/{channel_id}", response_model=ChannelRead)

@@ -49,10 +49,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Channel, Video, analyzable_video_filter
-from app.services.youtube import SHORTS_MAX_SECONDS
+from app.services.youtube import (
+    ANALYSIS_MAX_VIDEOS,
+    ANALYSIS_MIN_VIDEOS,
+    ANALYSIS_WINDOW_DAYS,
+    SHORTS_MAX_SECONDS,
+)
 
 # --------------------------------------------------------------------- config
-DEFAULT_ANALYZE_LIMIT = 50          # latest N videos by publish date
 SHORT_MAX_SECONDS = SHORTS_MAX_SECONDS  # Shorts are capped at 3 min; fallback only
 MIN_VIDEOS_FOR_FINDINGS = 5         # below this: findings are inconclusive
 RECENT_WINDOW_DAYS = 90             # "recent performance" window
@@ -80,7 +84,9 @@ STOPWORDS = {
 
 @dataclass(frozen=True)
 class AuditConfig:
-    analyze_limit: int = DEFAULT_ANALYZE_LIMIT
+    window_days: int = ANALYSIS_WINDOW_DAYS   # analyze uploads from the last N days,
+    min_videos: int = ANALYSIS_MIN_VIDEOS     # ...but at least the latest N uploads
+    max_videos: int = ANALYSIS_MAX_VIDEOS     # ...and at most N uploads
     short_max_seconds: int = SHORT_MAX_SECONDS
     recent_window_days: int = RECENT_WINDOW_DAYS
     stale_upload_days: int = STALE_UPLOAD_DAYS
@@ -88,6 +94,7 @@ class AuditConfig:
 
 
 FORMULAS: dict[str, str] = {
+    "analysis_set": f"uploads published in the last {ANALYSIS_WINDOW_DAYS} days; if fewer than {ANALYSIS_MIN_VIDEOS}, the latest {ANALYSIS_MIN_VIDEOS} uploads instead; never more than {ANALYSIS_MAX_VIDEOS} (newest first). Scheduled premieres and live streams excluded. The real date span is reported in `coverage`",
     "age_days": "max(1, floor((now_utc - published_at) / 1 day)); undated videos have age unknown and are excluded from mature rankings",
     "views_per_day": "view_count / age_days  (age-normalized comparison metric; for videos under 7 days old this is PROVISIONAL early traction only)",
     "avg_views": "mean(view_count) over the analyzed video set",
@@ -230,6 +237,7 @@ class ChannelAudit:
     unavailable_metrics: list[str] | None = None
     confidence_rules: dict[str, str] | None = None
     data_freshness: dict[str, Any] | None = None
+    coverage: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------- helpers
@@ -605,8 +613,8 @@ def build_findings(
              "days_since_last_upload": perf.days_since_last_upload,
              "first_published_at": perf.first_published_at.isoformat() if perf.first_published_at else None,
              "last_published_at": perf.last_published_at.isoformat() if perf.last_published_at else None},
-            ["Cadence is computed over the analyzed set only (latest "
-             f"{cfg.analyze_limit} synced videos), not the channel's whole history.",
+            ["Cadence is computed over the analyzed set only (see analysis coverage), "
+             "not the channel's whole history.",
              "A monthly rate requires an observation span >= "
              f"{MIN_OBSERVATION_SPAN_DAYS} days; shorter bursts are reported as raw counts only."],
             kind="fact",
@@ -625,7 +633,7 @@ def build_findings(
                            "Plan a realistic release schedule; even one well-prepared video restores momentum.",
                            "high",
                            {"days_since_last_upload": perf.days_since_last_upload, "threshold_days": cfg.stale_upload_days},
-                           ["The latest 50 synced videos are analyzed; videos newer than the sync snapshot would not appear here."]))
+                           ["Only the analyzed set is checked; videos newer than the last sync would not appear here."]))
     else:
         findings.append(_f("upload_pause", "Publishing pause", "low", "ok",
                            f"Last upload was {perf.days_since_last_upload} days ago (below the {cfg.stale_upload_days}-day threshold).",
@@ -1026,21 +1034,84 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
                        caveats)
 
 
+# --------------------------------------------------------------------- analysis set
+def select_analysis_set(candidates: list[Video], cfg: AuditConfig, now: datetime,
+                        channel_video_count: int | None = None) -> tuple[list[Video], dict[str, Any]]:
+    """Uploads from the last ``window_days``; if fewer than ``min_videos`` fall
+    in the window, the latest ``min_videos`` instead; never more than
+    ``max_videos``. Returns the chosen videos and their actual date coverage."""
+    cutoff = now - timedelta(days=cfg.window_days)
+    oldest_dt = datetime.min.replace(tzinfo=timezone.utc)
+    ordered = sorted(candidates, key=lambda v: _aware(v.published_at) or oldest_dt,
+                     reverse=True)[:cfg.max_videos]
+    in_window = [v for v in ordered if v.published_at and _aware(v.published_at) >= cutoff]
+    if len(in_window) >= cfg.min_videos:
+        chosen, mode = in_window, "window"
+    else:
+        chosen, mode = ordered[:cfg.min_videos], "min_videos_fallback"
+
+    pubs = [_aware(v.published_at) for v in chosen if v.published_at]
+    oldest, newest = (min(pubs), max(pubs)) if pubs else (None, None)
+    covered_days = max(1, round(_gap_days(oldest, now))) if oldest else None
+    cap_reached = len(chosen) >= cfg.max_videos and oldest is not None and oldest > cutoff
+    # Stored uploads stop short of the window start while the channel has more
+    # uploads than we hold: the window is not fully covered (stale/partial sync).
+    has_older = any(v.published_at and _aware(v.published_at) < cutoff for v in candidates)
+    window_incomplete = bool(
+        oldest is not None and oldest > cutoff and not has_older
+        and channel_video_count is not None and channel_video_count > len(candidates)
+    )
+    return chosen, {
+        "mode": mode,
+        "window_days": cfg.window_days,
+        "window_start": cutoff.isoformat(),
+        "min_videos": cfg.min_videos,
+        "max_videos": cfg.max_videos,
+        "videos_analyzed": len(chosen),
+        "oldest_analyzed": oldest.isoformat() if oldest else None,
+        "newest_analyzed": newest.isoformat() if newest else None,
+        "covered_days": covered_days,
+        "cap_reached": cap_reached,
+        "window_incomplete": window_incomplete,
+    }
+
+
+def _coverage_notes(cov: dict[str, Any], cfg: AuditConfig, channel: Channel) -> list[str]:
+    n = cov["videos_analyzed"]
+    total = channel.video_count or "unknown"
+    if not n:
+        return ["No analyzable uploads stored yet — sync the channel first."]
+    span = (f"{cov['oldest_analyzed'][:10]} – {cov['newest_analyzed'][:10]}"
+            if cov["oldest_analyzed"] else "undated")
+    if cov["cap_reached"]:
+        return [f"{cfg.max_videos}-video cap reached: the analysis covers only the last "
+                f"{cov['covered_days']} of {cfg.window_days} days ({span}), "
+                f"{n} of {total} uploads on the channel."]
+    if cov["window_incomplete"]:
+        return [f"Stored uploads cover only the last {cov['covered_days']} of {cfg.window_days} days "
+                f"({span}; {n} of {total} on the channel). Sync the channel to fetch the full window."]
+    if cov["mode"] == "min_videos_fallback":
+        return [f"Fewer than {cfg.min_videos} uploads in the last {cfg.window_days} days, so the "
+                f"latest {n} uploads are analyzed instead ({span}; {total} on the channel)."]
+    return [f"Analysis window: {n} uploads from the last {cfg.window_days} days ({span}), "
+            f"of {total} on the channel."]
+
+
 # --------------------------------------------------------------------- entry point
 def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = None,
                       now: datetime | None = None) -> ChannelAudit:
     cfg = cfg or AuditConfig()
     now = now or _utcnow()
 
-    videos = list(
+    candidates = list(
         db.execute(
             select(Video)
             .where(Video.channel_id == channel.id, analyzable_video_filter())
             .order_by(Video.published_at.desc())
-            .limit(cfg.analyze_limit)
+            .limit(cfg.max_videos)
         ).scalars().all()
     )
-    # Videos without publish dates sort last but still count toward totals.
+    videos, coverage = select_analysis_set(candidates, cfg, now, channel.video_count)
     perf = compute_performance(videos, cfg, now)
     rows, baseline = rank_videos(videos, cfg, now)
     outliers = detect_outliers(rows)
@@ -1056,8 +1127,7 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         notes.append(f"{perf.format_unclassified} video(s) lack duration metadata and were left unclassified.")
     if perf.hidden_stats_videos:
         notes.append(f"{perf.hidden_stats_videos} video(s) hide like AND comment counts.")
-    notes.append("Analysis window: latest "
-                 f"{min(cfg.analyze_limit, perf.videos_analyzed)} synced videos (of {channel.video_count or 'unknown'} total on channel).")
+    notes.extend(_coverage_notes(coverage, cfg, channel))
     notes.append("Format labels ('estimated-shorts'/'estimated-longform') come from YouTube's /shorts/<id> "
                  f"URL check, falling back to duration <= {SHORT_MAX_SECONDS}s when the check was unavailable; "
                  "YouTube's Data API does not expose an official Shorts flag.")
@@ -1146,4 +1216,5 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         unavailable_metrics=list(UNAVAILABLE_METRICS),
         confidence_rules=dict(CONFIDENCE_RULES),
         data_freshness=freshness,
+        coverage=coverage,
     )

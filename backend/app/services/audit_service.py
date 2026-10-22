@@ -11,10 +11,8 @@ from app.analytics.audit import AuditConfig, ChannelAudit, run_channel_audit
 from app.db.models import Channel, ChannelAnalysis
 
 
-def audit_channel(db: Session, channel: Channel, *, limit: int | None = None,
-                  persist: bool = False) -> ChannelAudit:
-    cfg = AuditConfig() if limit is None else AuditConfig(analyze_limit=limit)
-    audit = run_channel_audit(db, channel, cfg)
+def audit_channel(db: Session, channel: Channel, *, persist: bool = False) -> ChannelAudit:
+    audit = run_channel_audit(db, channel, AuditConfig())
     if persist:
         run = ChannelAnalysis(
             channel_id=channel.id,

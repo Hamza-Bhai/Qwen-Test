@@ -99,7 +99,7 @@ def _resolve_shorts(videos: list[Video]) -> None:
             video.is_short = is_short
 
 
-def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dict:
+def sync_channel(db: Session, channel: Channel) -> dict:
     """Refresh channel stats + upsert its recent videos. Returns job detail dict."""
     service = get_service(db)
     used_before = service.quota.used_today()
@@ -120,7 +120,7 @@ def sync_channel(db: Session, channel: Channel, *, video_limit: int = 50) -> dic
     synced: list[Video] = []
     playlist_id = channel.uploads_playlist_id
     if playlist_id:
-        for v_item in service.fetch_recent_videos(playlist_id, limit=video_limit):
+        for v_item in service.fetch_recent_videos(playlist_id):
             vf = video_payload_to_fields(v_item)
             video = db.execute(
                 select(Video).where(Video.youtube_video_id == vf["youtube_video_id"])

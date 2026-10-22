@@ -42,6 +42,7 @@ import {
 import type {
   AuditFinding,
   AuditTopicGroup,
+  AuditCoverage,
   AuditVideoRanking,
   ChannelAudit,
 } from "@/lib/types";
@@ -52,6 +53,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorMessage } from "@/components/error-message";
 
 const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
+
+/** One-line description of which uploads the audit covers. */
+function coverageSummary(cov: AuditCoverage | undefined, fallbackCount: number): string {
+  if (!cov) return `Rule-based analysis of ${fallbackCount} synced videos`;
+  const span =
+    cov.oldest_analyzed && cov.newest_analyzed
+      ? ` (${formatDate(cov.oldest_analyzed)} – ${formatDate(cov.newest_analyzed)})`
+      : "";
+  if (cov.mode === "min_videos_fallback") {
+    return `Rule-based analysis of the latest ${cov.videos_analyzed} uploads${span} — fewer than ${cov.min_videos} in the last ${cov.window_days} days`;
+  }
+  return `Rule-based analysis of ${cov.videos_analyzed} uploads from the last ${cov.window_days} days${span}`;
+}
 
 /** Map machine format identifiers to human wording. The backend emits
  *  "estimated-*" or "unknown": labels come from YouTube's /shorts/ URL check,
@@ -423,7 +437,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
             Channel audit
           </h2>
           <p className="text-xs text-muted-foreground">
-            Rule-based analysis of the latest {perf.videos_analyzed} of {perf.analyzed_from_total_synced} synced videos ·
+            {coverageSummary(audit.coverage, perf.videos_analyzed)} ·
             computed from stored records ({audit.computed_from}) · audited {formatDateTime(audit.audited_at)} · zero API
             quota used
           </p>
@@ -435,6 +449,15 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
       </div>
 
       {rerun.isError && <ErrorMessage error={rerun.error} />}
+
+      {(audit.coverage?.cap_reached || audit.coverage?.window_incomplete) && (
+        <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {audit.coverage.cap_reached
+            ? `${audit.coverage.max_videos}-video limit reached: this audit covers only the last ${audit.coverage.covered_days} of ${audit.coverage.window_days} days. Older uploads in the window are not included.`
+            : `Stored uploads cover only the last ${audit.coverage.covered_days} of ${audit.coverage.window_days} days. Sync the channel to fetch the full window.`}
+        </p>
+      )}
 
       {audit.insufficient_data && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">

@@ -17,7 +17,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 4 | P1 | Same keyword in Strong AND Weak topics | ✅ |
 | 5 | P1 | Fresh videos leak into format split & concentration | ✅ |
 | 6 | P1 | Upcoming premieres / live streams not filtered | ✅ |
-| 7 | P1 | Analysis limited to latest 50 videos | ☐ |
+| 7 | P1 | Analysis limited to latest 50 videos | ✅ |
 | 8 | P1 | Shorts and long-form share one baseline | ☐ |
 | 9 | P1 | Health score does not measure views | ☐ |
 | 10 | P1 | Views/day is biased against older videos | ☐ |
@@ -109,7 +109,12 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Fix:** store `live_broadcast_content`; exclude `upcoming` / `live` from analysis.
 - **Test:** payload with `liveBroadcastContent: "upcoming"` is not counted.
 
-## 7. [P1] Analysis limited to latest 50 videos
+## 7. [P1] Analysis limited to latest 50 videos — ✅ fixed
+
+- **Done:** sync pages the uploads playlist; analysis set = last 90 days, at least latest 50
+  (keeps history for the recent-vs-history trend), at most 500. `coverage` block + notes + UI banner
+  disclose the real span, cap reached, or a stored set that doesn't reach the window yet.
+- **Needs:** one Sync per channel to fetch the full window (DPCcars currently 5 of 90 days).
 
 - **Where:** `fetch_recent_videos` fetches one page; `DEFAULT_ANALYZE_LIMIT = 50`.
 - **Evidence (DPCcars):** 28,000 videos on channel; the 50 analyzed span only 4.5 days →

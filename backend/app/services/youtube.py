@@ -13,6 +13,7 @@ module stays transport-level and reusable by later phases (analytics, AI).
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -26,6 +27,23 @@ BASE_URL = "https://www.googleapis.com/youtube/v3"
 _HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._-]{3,30}$")
 _CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+# Analysis set: uploads from the last 90 days, but at least the latest 50 (so
+# low-frequency channels keep enough history for trend comparisons) and at
+# most 500 (bounds quota: ~20 units per full sync).
+ANALYSIS_WINDOW_DAYS = 90
+ANALYSIS_MIN_VIDEOS = 50
+ANALYSIS_MAX_VIDEOS = 500
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 class YouTubeAPIError(RuntimeError):
@@ -148,17 +166,46 @@ class YouTubeService:
             raise YouTubeAPIError(404, f"No channel found for '{identifier}'.")
         return items[0]
 
-    def fetch_recent_videos(self, upload_playlist_id: str, *, limit: int = 50) -> list[dict]:
-        """Video IDs from the uploads playlist, then full stats via videos.list."""
-        pl = self.playlist_items(upload_playlist_id, max_results=min(limit, 50))
-        ids = [
-            item["contentDetails"]["videoId"]
-            for item in pl.get("items", [])
-            if item.get("contentDetails", {}).get("videoId")
-        ]
-        if not ids:
-            return []
-        return self.videos_list(ids).get("items", []) or []
+    def fetch_recent_videos(
+        self,
+        upload_playlist_id: str,
+        *,
+        window_days: int = ANALYSIS_WINDOW_DAYS,
+        min_videos: int = ANALYSIS_MIN_VIDEOS,
+        max_videos: int = ANALYSIS_MAX_VIDEOS,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Uploads from the last ``window_days`` (at least ``min_videos``, at
+        most ``max_videos``), newest first, with full stats via videos.list.
+
+        Pages through the uploads playlist (1 unit per 50) and stops at the
+        first upload older than the window once ``min_videos`` are collected.
+        """
+        cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=window_days)
+        ids: list[str] = []
+        page_token: str | None = None
+        while len(ids) < max_videos:
+            pl = self.playlist_items(upload_playlist_id, max_results=50, page_token=page_token)
+            past_window = False
+            for item in pl.get("items", []):
+                details = item.get("contentDetails", {})
+                if not details.get("videoId"):
+                    continue
+                published = _parse_iso(details.get("videoPublishedAt"))
+                if len(ids) >= min_videos and published and published < cutoff:
+                    past_window = True
+                    break
+                ids.append(details["videoId"])
+                if len(ids) >= max_videos:
+                    break
+            page_token = pl.get("nextPageToken")
+            if past_window or not page_token:
+                break
+
+        items: list[dict] = []
+        for start in range(0, len(ids), 50):
+            items.extend(self.videos_list(ids[start:start + 50]).get("items", []) or [])
+        return items
 
 
 def parse_iso8601_duration(value: str | None) -> int | None:

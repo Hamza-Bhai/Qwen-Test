@@ -864,3 +864,48 @@ class TestFreshVideosExcludedFromFormatAndConcentration:
         conc = self._finding(_run_audit_on(mature + fresh), "concentration")
         assert conc.status == "ok"
         assert conc.evidence["mature_videos"] == 12
+
+
+class TestAnalysisWindow:
+    """Issue #7: analyze the last 90 days (at least 50, at most 500 videos) and
+    disclose the actual date coverage."""
+
+    def test_daily_channel_uses_90_day_window(self):
+        vids = [FakeVideo(vid=f"d{i}", views=100, days_ago=i + 0.5) for i in range(120)]
+        audit = _run_audit_on(vids)
+        cov = audit.coverage
+        assert audit.performance.videos_analyzed == 90
+        assert cov["mode"] == "window" and cov["cap_reached"] is False
+
+    def test_weekly_channel_falls_back_to_latest_50(self):
+        vids = [FakeVideo(vid=f"w{i}", views=100, days_ago=i * 7 + 1) for i in range(70)]
+        audit = _run_audit_on(vids)
+        assert audit.performance.videos_analyzed == 50
+        assert audit.coverage["mode"] == "min_videos_fallback"
+        assert any("latest 50 uploads" in n for n in audit.notes)
+
+    def test_cap_reached_is_disclosed(self):
+        vids = [FakeVideo(vid=f"h{i}", views=100, days_ago=i * 0.1 + 0.05) for i in range(600)]
+        audit = _run_audit_on(vids)
+        cov = audit.coverage
+        assert audit.performance.videos_analyzed == 500
+        assert cov["cap_reached"] is True
+        assert cov["covered_days"] < 90
+        assert any("500-video cap" in n for n in audit.notes)
+
+    def test_stale_sync_not_reaching_window_is_disclosed(self):
+        # 50 stored uploads spanning 5 days, but the channel has 28,000 videos:
+        # the stored set does not cover the 90-day window yet.
+        from app.analytics.audit import run_channel_audit
+
+        vids = [FakeVideo(vid=f"s{i}", views=100, days_ago=i * 0.1 + 0.05) for i in range(50)]
+        channel = FakeChannel()
+        channel.video_count = 28_000
+        audit = run_channel_audit(FakeDB(vids), channel, CFG, NOW)
+        assert audit.coverage["window_incomplete"] is True
+        assert any("Sync the channel" in n for n in audit.notes)
+
+    def test_new_channel_with_all_videos_is_complete(self):
+        vids = [FakeVideo(vid=f"n{i}", views=100, days_ago=i + 0.5) for i in range(50)]
+        audit = _run_audit_on(vids)  # FakeChannel.video_count == 50
+        assert audit.coverage["window_incomplete"] is False

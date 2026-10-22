@@ -5,6 +5,8 @@ mirror real channels.list responses; assertions verify the values displayed by
 the API match the API response exactly — nothing invented, nothing dropped.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -300,3 +302,57 @@ class TestUpcomingAndLiveExcluded:
         audit = client.get(f"/api/v1/channels/{body['channel']['id']}/audit").json()
         assert audit["performance"]["videos_analyzed"] == 1
         assert audit["performance"]["shorts_count"] == 0
+
+
+class TestFetchRecentVideosPagination:
+    """Issue #7: uploads are paged until the 90-day window is covered (at least
+    min_videos, at most max_videos); videos.list is batched by 50."""
+
+    NOW = datetime(2026, 10, 22, tzinfo=timezone.utc)
+
+    def _service(self, pages, monkeypatch):
+        from app.services.youtube import YouTubeService
+
+        svc = YouTubeService(cache=None, quota=None)
+        page_calls, batch_sizes = [], []
+
+        def playlist_items(playlist_id, *, max_results=50, page_token=None):
+            idx = int(page_token or 0)
+            page_calls.append(idx)
+            body = {"items": [
+                {"contentDetails": {"videoId": vid,
+                                    "videoPublishedAt": (self.NOW - timedelta(days=age)).isoformat()}}
+                for vid, age in pages[idx]
+            ]}
+            if idx + 1 < len(pages):
+                body["nextPageToken"] = str(idx + 1)
+            return body
+
+        def videos_list(ids, parts="snippet,statistics,contentDetails"):
+            batch_sizes.append(len(ids))
+            return {"items": [{"id": i} for i in ids]}
+
+        monkeypatch.setattr(svc, "playlist_items", playlist_items)
+        monkeypatch.setattr(svc, "videos_list", videos_list)
+        return svc, page_calls, batch_sizes
+
+    def test_stops_at_window_cutoff(self, monkeypatch):
+        pages = [[("a", 1), ("b", 30), ("c", 60)], [("d", 80), ("e", 120)], [("f", 200)]]
+        svc, page_calls, _ = self._service(pages, monkeypatch)
+        items = svc.fetch_recent_videos("UU", window_days=90, min_videos=2, max_videos=10, now=self.NOW)
+        assert [i["id"] for i in items] == ["a", "b", "c", "d"]
+        assert page_calls == [0, 1]  # third page never requested
+
+    def test_min_videos_reach_past_the_window(self, monkeypatch):
+        pages = [[("a", 100), ("b", 200), ("c", 300)]]
+        svc, _, _ = self._service(pages, monkeypatch)
+        items = svc.fetch_recent_videos("UU", window_days=90, min_videos=2, max_videos=10, now=self.NOW)
+        assert [i["id"] for i in items] == ["a", "b"]
+
+    def test_max_videos_cap_and_batching(self, monkeypatch):
+        pages = [[(f"v{p}_{i}", 1) for i in range(50)] for p in range(4)]
+        svc, page_calls, batch_sizes = self._service(pages, monkeypatch)
+        items = svc.fetch_recent_videos("UU", window_days=90, min_videos=50, max_videos=120, now=self.NOW)
+        assert len(items) == 120
+        assert page_calls == [0, 1, 2]
+        assert batch_sizes == [50, 50, 20]

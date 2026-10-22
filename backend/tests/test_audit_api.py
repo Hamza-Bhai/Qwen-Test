@@ -130,10 +130,12 @@ class TestAuditEndpoint:
     def test_unknown_channel_404(self, client):
         assert client.get("/api/v1/channels/999999/audit").status_code == 404
 
-    def test_limit_param_validated(self, client, analyzed):
-        cid = analyzed["channel"]["id"]
-        assert client.get(f"/api/v1/channels/{cid}/audit?limit=0").status_code == 422
-        assert client.get(f"/api/v1/channels/{cid}/audit?limit=201").status_code == 422
+    def test_coverage_block_reported(self, client, analyzed):
+        cov = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/audit").json()["coverage"]
+        assert cov["window_days"] == 90 and cov["min_videos"] == 50 and cov["max_videos"] == 500
+        assert cov["videos_analyzed"] == 1
+        assert cov["mode"] == "min_videos_fallback"  # the one fake video is from 2024
+        assert cov["cap_reached"] is False
 
 
 class TestPhase1Regression:

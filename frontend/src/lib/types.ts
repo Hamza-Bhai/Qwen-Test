@@ -193,6 +193,25 @@ export interface ChannelAudit {
   unavailable_metrics?: string[];
   confidence_rules?: Record<string, string>;
   data_freshness?: AuditDataFreshness;
+  /** Which uploads were analyzed and the real date span they cover. */
+  coverage?: AuditCoverage;
+}
+
+/** GET /channels/{id}/audit `coverage` block: last `window_days` days, at least
+ *  `min_videos`, at most `max_videos` uploads. */
+export interface AuditCoverage {
+  mode: "window" | "min_videos_fallback";
+  window_days: number;
+  window_start: string;
+  min_videos: number;
+  max_videos: number;
+  videos_analyzed: number;
+  oldest_analyzed: string | null;
+  newest_analyzed: string | null;
+  covered_days: number | null;
+  cap_reached: boolean;
+  /** Stored uploads stop before the window start (stale or partial sync). */
+  window_incomplete?: boolean;
 }
 
 /** GET /channels/{id}/audit `data_freshness` block. Nullable timestamps are
