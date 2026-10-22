@@ -12,18 +12,40 @@ from sqlalchemy.orm import Session
 
 from app.analytics.metrics import summarize_channel
 from app.db.session import get_db
-from app.schemas.channel import ChannelCreate, ChannelRead, SyncResult, VideoRead
+from app.schemas.channel import (
+    ChannelAnalysisRead,
+    ChannelCreate,
+    ChannelOverview,
+    ChannelRead,
+    SyncResult,
+    VideoRead,
+)
 from app.services import channel_service
 from app.services.quota import QuotaExceededError
+from app.services.url_resolver import UnsupportedURLError
 from app.services.youtube import YouTubeAPIError
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 
 def _handle_api_error(exc: Exception) -> None:
+    if isinstance(exc, UnsupportedURLError):
+        # 400 + explicit "unsupported format" signal; never a silent guess.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "unsupported_url_format",
+                "url": exc.url,
+                "format": exc.kind,
+                "message": str(exc),
+            },
+        ) from exc
     if isinstance(exc, YouTubeAPIError):
-        status = 502 if exc.status_code not in (403, 404) else (404 if exc.status_code == 404 else 400)
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if exc.status_code == 403 or exc.status_code >= 500:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, QuotaExceededError):
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     if isinstance(exc, ValueError):
@@ -37,12 +59,69 @@ def list_channels(db: Session = Depends(get_db)):
 
 @router.post("", response_model=ChannelRead, status_code=201)
 async def add_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
-    """Resolve a handle/ID via the YouTube Data API and store real metadata."""
+    """Resolve a URL/handle/ID via the YouTube Data API and store real metadata."""
     try:
         channel = await asyncio.to_thread(channel_service.add_channel, db, payload.identifier)
     except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:
         _handle_api_error(exc)
     return channel
+
+
+@router.post("/analyze", response_model=ChannelOverview, status_code=201)
+async def analyze_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
+    """One-shot Phase-1 action behind the 'Analyze Channel' button.
+
+    Accepts any supported YouTube channel URL, resolves it against the real
+    Data API, syncs recent videos, records an analysis-history row and returns
+    the full overview in a single response.
+    """
+    from dataclasses import asdict
+
+    try:
+        channel, detail = await asyncio.to_thread(
+            channel_service.analyze_channel, db, payload.identifier
+        )
+    except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:
+        _handle_api_error(exc)
+    summary = summarize_channel(db, channel)
+    return ChannelOverview(
+        channel=ChannelRead.model_validate(channel),
+        summary=asdict(summary),
+        recent_videos=[
+            VideoRead.model_validate(v)
+            for v in channel_service.list_videos(db, channel.id, limit=24)
+        ],
+        history=[
+            ChannelAnalysisRead.model_validate(a)
+            for a in channel_service.list_analyses(db, channel.id)
+        ],
+    )
+
+
+@router.get("/{channel_id}/overview", response_model=ChannelOverview)
+def channel_overview(channel_id: int, db: Session = Depends(get_db)):
+    """Dashboard view: stored channel data + deterministic summary + history.
+
+    Reads from our database only (no quota spent); refresh with /sync first.
+    """
+    from dataclasses import asdict
+
+    channel = channel_service.get_channel_by_pk(db, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    summary = summarize_channel(db, channel)
+    return ChannelOverview(
+        channel=ChannelRead.model_validate(channel),
+        summary=asdict(summary),
+        recent_videos=[
+            VideoRead.model_validate(v)
+            for v in channel_service.list_videos(db, channel_id, limit=24)
+        ],
+        history=[
+            ChannelAnalysisRead.model_validate(a)
+            for a in channel_service.list_analyses(db, channel_id)
+        ],
+    )
 
 
 @router.get("/{channel_id}", response_model=ChannelRead)

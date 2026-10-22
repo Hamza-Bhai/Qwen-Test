@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, Video
+from app.db.models import Channel, ChannelAnalysis, Video
 from app.services.cache import ResponseCache
 from app.services.quota import QuotaTracker
+from app.services.url_resolver import parse_channel_reference
 from app.services.youtube import YouTubeService, channel_payload_to_fields, video_payload_to_fields
 
 
@@ -34,8 +35,16 @@ def get_service(db: Session) -> YouTubeService:
 
 
 def add_channel(db: Session, identifier: str) -> Channel:
-    """Resolve a handle/ID against the Data API and store the channel."""
-    item = get_service(db).resolve_channel(identifier)
+    """Parse a channel URL/handle/ID, resolve it against the Data API, store it.
+
+    ``identifier`` may be:
+      * a full channel URL (youtube.com/@handle or /channel/UC...)
+      * a bare @handle or UC... channel ID
+    Legacy /c/ and /user/ URLs raise ``UnsupportedURLError`` (a ValueError
+    subclass) with an actionable message — we never guess (Phase 1 rule).
+    """
+    target = parse_channel_reference(identifier)
+    item = get_service(db).resolve_channel(target.identifier)
     fields = channel_payload_to_fields(item)
 
     channel = db.execute(
@@ -139,3 +148,42 @@ def list_videos(db: Session, channel_pk: int, *, limit: int = 100) -> list[Video
 def delete_channel(db: Session, channel: Channel) -> None:
     db.delete(channel)
     db.commit()
+
+
+def analyze_channel(db: Session, identifier: str) -> tuple[Channel, dict]:
+    """Full Phase-1 'Analyze' flow: parse URL -> resolve via API -> sync videos
+    -> store a ChannelAnalysis history row. Returns (channel, detail)."""
+    from dataclasses import asdict
+    from app.analytics.metrics import summarize_channel
+
+    channel = add_channel(db, identifier)  # upserts fresh stats from the API
+    detail = sync_channel(db, channel)
+    summary = summarize_channel(db, channel)
+
+    run = ChannelAnalysis(
+        channel_id=channel.id,
+        trigger="analyze",
+        subscriber_count=channel.subscriber_count,
+        video_count=channel.video_count,
+        view_count=channel.view_count,
+        videos_synced=detail["videos_upserted"],
+        quota_units_used=detail["quota_units_used"],
+        summary=asdict(summary),
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return channel, {**detail, "analysis_id": run.id}
+
+
+def list_analyses(db: Session, channel_pk: int, *, limit: int = 50) -> list[ChannelAnalysis]:
+    return list(
+        db.execute(
+            select(ChannelAnalysis)
+            .where(ChannelAnalysis.channel_id == channel_pk)
+            .order_by(ChannelAnalysis.created_at.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )

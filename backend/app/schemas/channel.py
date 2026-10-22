@@ -6,7 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChannelCreate(BaseModel):
-    """Add a channel by handle or channel ID, e.g. '@mkbhd' or 'UC...'.
+    """Add a channel by URL, handle or channel ID.
+
+    Examples: 'https://www.youtube.com/@mkbhd',
+    'https://youtube.com/channel/UC...', '@mkbhd', 'UC...'.
+    Legacy /c/ and /user/ URLs are detected and reported as unsupported.
 
     The backend resolves it against the YouTube Data API; no client-supplied
     channel statistics are ever accepted (rule #10).
@@ -14,8 +18,8 @@ class ChannelCreate(BaseModel):
 
     identifier: str = Field(
         min_length=2,
-        max_length=100,
-        description="YouTube handle ('@name'), channel ID ('UC...'), or plain handle.",
+        max_length=300,
+        description="YouTube channel URL, handle ('@name'), or channel ID ('UC...').",
     )
 
 
@@ -54,3 +58,26 @@ class SyncResult(BaseModel):
     channel_id: int
     videos_upserted: int
     quota_units_used: int
+
+
+class ChannelAnalysisRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    channel_id: int
+    created_at: datetime
+    trigger: str
+    subscriber_count: int | None = None
+    video_count: int | None = None
+    view_count: int | None = None
+    videos_synced: int
+    quota_units_used: int
+
+
+class ChannelOverview(BaseModel):
+    """Everything the Phase-1 dashboard needs in one call."""
+
+    channel: ChannelRead
+    summary: dict
+    recent_videos: list[VideoRead]
+    history: list[ChannelAnalysisRead]

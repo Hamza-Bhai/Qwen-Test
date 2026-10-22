@@ -71,6 +71,9 @@ class Channel(Base):
     videos: Mapped[list["Video"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )
+    analyses: Mapped[list["ChannelAnalysis"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
 
 
 class Video(Base):
@@ -148,3 +151,31 @@ class JobRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     detail: Mapped[dict | None] = mapped_column(JSON)
+
+
+class ChannelAnalysis(Base):
+    """History of channel analyses (one row per analyze/sync run).
+
+    Snapshots the public stats *as returned by the API at that moment* so the
+    dashboard can show how a channel changed over time. No derived or invented
+    metrics — every column mirrors an actual channels.list response (rule #10).
+    """
+
+    __tablename__ = "channel_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    trigger: Mapped[str] = mapped_column(String(32), default="analyze")  # analyze|sync|scheduler
+    subscriber_count: Mapped[int | None] = mapped_column(Integer)
+    video_count: Mapped[int | None] = mapped_column(Integer)
+    view_count: Mapped[int | None] = mapped_column(Integer)
+    videos_synced: Mapped[int] = mapped_column(Integer, default=0)
+    quota_units_used: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[dict | None] = mapped_column(JSON)  # deterministic metrics snapshot
+
+    channel: Mapped["Channel"] = relationship(back_populates="analyses")
+
+    __table_args__ = (Index("ix_channel_analyses_channel_created", "channel_id", "created_at"),)
