@@ -243,7 +243,7 @@ def make_fake_get(monkeypatch, *, channel_item=_SENTINEL, error_status=None, err
         if not _is_google_api(url):
             return _ORIGINAL_HTTPX_GET(self, url, params=params, **kwargs)
         p = dict(params or {})
-        calls.append({"url": url, "params": p})
+        calls.append({"url": url, "params": p, "headers": dict(kwargs.get("headers") or {})})
         if error_status is not None:
             return FakeResponse(
                 error_status,

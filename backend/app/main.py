@@ -13,6 +13,10 @@ from app.db.session import init_db
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
+# httpx/httpcore log every request URL at INFO; keep them quiet so outgoing
+# request details never land in the server logs.
+for _noisy in ("httpx", "httpcore"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 

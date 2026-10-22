@@ -69,8 +69,6 @@ class YouTubeService:
 
         self.quota.check_available(cost)
 
-        query = dict(params)
-        query["key"] = key
         resource = {
             "channels.list": "channels",
             "channels.list_for_handle": "channels",
@@ -80,8 +78,10 @@ class YouTubeService:
         }[endpoint]
         url = f"{BASE_URL}/{resource}"
 
+        # Key goes in a header, never the query string: request URLs end up in
+        # logs, error messages and proxies.
         with httpx.Client(timeout=30) as client:
-            resp = client.get(url, params=query)
+            resp = client.get(url, params=params, headers={"X-Goog-Api-Key": key})
 
         if resp.status_code != 200:
             try:

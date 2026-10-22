@@ -223,3 +223,23 @@ class TestResolveShorts:
 
         assert sorted(checked) == ["regular", "short"]
         assert (long_v.is_short, known.is_short, short.is_short, regular.is_short) == (False, False, True, False)
+
+
+class TestApiKeyNotLeaked:
+    """The YouTube API key must never appear in request URLs (they get logged)."""
+
+    def test_key_sent_as_header_not_query_param(self, client, monkeypatch):
+        calls = make_fake_get(monkeypatch)
+        resp = client.post("/api/v1/channels/analyze", json={"identifier": "@testchannel"})
+        assert resp.status_code == 201, resp.text
+        assert calls
+        for call in calls:
+            assert "key" not in call["params"]
+            assert call["headers"].get("X-Goog-Api-Key") == "test-api-key"
+
+    def test_httpx_request_logging_silenced(self):
+        import logging
+
+        import app.main  # noqa: F401 - configures logging on import
+
+        assert logging.getLogger("httpx").level >= logging.WARNING
