@@ -30,7 +30,8 @@ Formulas (all documented in FORMULAS below and exposed in the API response):
   days_since_last      = (now - most recent published_at).days
   outlier              |vpd| > median(vpd) + 3 * MAD-ish spread (robust z via IQR fence)
   concentration        top-5 videos' share of total views of analyzed set
-  format split         short := duration_seconds <= SHORT_MAX_SECONDS (300s default)
+  format split         estimated via duration (+ portrait contentDetails
+                       .dimension when present); NEVER an official Shorts flag
 
 Health score (0-100) is computed ONLY from components whose data exists;
 missing components are excluded and their weight renormalized — a channel is
@@ -99,7 +100,7 @@ FORMULAS: dict[str, str] = {
     "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below the channel's own mature-median views/day baseline",
     "outlier": "views_per_day beyond Q3 + 3*IQR computed over MATURE videos only (robust Tukey fence; requires >= 8 mature videos; no assumption of normality)",
     "top5_share_of_views": "sum(views of top-5 videos by view_count) / total_views",
-    "short_form": f"duration_seconds <= {SHORT_MAX_SECONDS} (public-metadata heuristic labelled 'estimated-shorts'; not an official flag)",
+    "short_form": ("duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s => estimated-shorts; portrait videos 301-600s => unknown; public-metadata heuristic, not an official Shorts flag"),
     "recent_vs_history": f"median(views_per_day of MATURE uploads in last {RECENT_WINDOW_DAYS} days) / median(views_per_day of MATURE uploads predating that window). Requires >=2 mature recent AND >=3 independent historical videos; otherwise inconclusive (no self-comparison).",
     "distribution_buckets": "counts of MATURE videos' views/day relative to the mature median (<50%, 50–80%, 80–120%, 120–200%, >200%); fresh uploads listed separately as excluded",
     "format_split": f"median views/day per estimated format group; needs >= {FORMAT_SPLIT_MIN_PER_GROUP} videos per group and a group-size imbalance <= {FORMAT_SPLIT_MAX_IMBALANCE}:1, else inconclusive; differences < 15% yield no claimed advantage",
@@ -274,16 +275,45 @@ def _quantiles(sorted_vals: list[float]) -> tuple[float, float]:
     return q(0.25), q(0.75)
 
 
-def classify_format(duration_seconds: int | None, short_max: int) -> str:
-    """Duration-based format ESTIMATE only.
+# Duration alone cannot confirm the format of videos between 301 and 600
+# seconds: some creators publish square/portrait sub-10-minute videos in the
+# Shorts feed, while landscape videos of the same length are ordinary uploads.
+SHORTS_MAX_LANDSCAPE_SECONDS = 300   # landscape/square + this short => estimated short
+SHORTS_MAX_PORTRAIT_SECONDS = 600    # portrait aspect ratio widens the window
 
-    YouTube's Data API v3 does not expose an official Shorts flag, so no public
-    field can *confirm* a video's format. Labels are prefixed with 'estimated-'
-    so nothing downstream can silently treat them as ground truth.
+
+def classify_format(
+    duration_seconds: int | None,
+    short_max: int,
+    width: int | None = None,
+    height: int | None = None,
+) -> str:
+    """Format ESTIMATE from public metadata (duration + content dimension).
+
+    YouTube's Data API v3 exposes NO official Shorts flag, so nothing here can
+    *confirm* a format; labels stay prefixed with 'estimated-' and never become
+    ground truth downstream. Rules actually implemented:
+
+      - duration missing                      -> unknown
+      - portrait video (height > width):
+          duration <= short_max               -> estimated-shorts
+          short_max < duration <= 600s        -> unknown (ambiguous band)
+          duration > 600s                     -> estimated-longform
+      - landscape/square or dimensions unknown:
+          duration <= short_max (default 300) -> estimated-shorts
+          otherwise                           -> estimated-longform
+
+    The portrait signal comes from contentDetails.dimension ("WxH"), which most
+    uploads expose; when it is absent we fall back to the duration heuristic.
     """
     if duration_seconds is None:
         return "unknown"
-    return "estimated-shorts" if duration_seconds <= short_max else "estimated-longform"
+    portrait = bool(width and height and height > width)
+    if portrait and short_max < duration_seconds <= SHORTS_MAX_PORTRAIT_SECONDS:
+        return "unknown"  # could be a Short or a regular upload; evidence insufficient
+    if duration_seconds <= short_max:
+        return "estimated-shorts"
+    return "estimated-longform"
 
 
 # ------------------------------------------------------------------ provenance
@@ -369,7 +399,9 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
     shorts_ids, long_ids, unknown_ids = [], [], []
     shorts_views, long_views, shorts_vpd, long_vpd = [], [], [], []
     for v in videos:
-        form = classify_format(v.duration_seconds, cfg.short_max_seconds)
+        form = classify_format(v.duration_seconds, cfg.short_max_seconds,
+                               getattr(v, "content_width", None),
+                               getattr(v, "content_height", None))
         {"estimated-shorts": shorts_ids, "estimated-longform": long_ids, "unknown": unknown_ids}[form].append(v)
         age = max(1, (now - (_aware(v.published_at) or now)).days)
         vpd = (v.view_count or 0) / age
@@ -474,7 +506,9 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
                 age_days=age,
                 views_per_day=round(vpd, 2),
                 vs_baseline_pct=None,
-                form=classify_format(v.duration_seconds, cfg.short_max_seconds),
+                form=classify_format(v.duration_seconds, cfg.short_max_seconds,
+                                     getattr(v, "content_width", None),
+                                     getattr(v, "content_height", None)),
                 last_synced_at=_aware(v.last_synced_at),
                 mature=pub is not None and age >= MIN_AGE_DAYS_FOR_RANKING,
             )
@@ -801,7 +835,8 @@ def build_findings(
                           "Descriptions and title lengths look adequately populated.", "No action needed.", "medium", ev, []))
 
     # ---- 7. Shorts vs long-form ----
-    fmt_limits = [f"Format is inferred from duration <= {cfg.short_max_seconds}s; YouTube's own "
+    fmt_limits = [f"Format is estimated from duration <= {cfg.short_max_seconds}s plus portrait "
+                f"aspect ratio where available (contentDetails.dimension); YouTube's own "
                   "Shorts flag is not exposed publicly, so every group membership is an estimate."]
     if perf.shorts_count < FORMAT_SPLIT_MIN_PER_GROUP or perf.longform_count < FORMAT_SPLIT_MIN_PER_GROUP:
         findings.append(_f("format_split", "Shorts vs long-form comparison", "low", "inconclusive",

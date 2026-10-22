@@ -89,6 +89,11 @@ class Video(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(String(512))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    # contentDetails.contentDimension (e.g. "1920x1080"). Public metadata that,
+    # together with duration, strengthens the Shorts/long-form ESTIMATE
+    # (portrait aspect ratio + short duration). Still not an official flag.
+    content_width: Mapped[int | None] = mapped_column(Integer)
+    content_height: Mapped[int | None] = mapped_column(Integer)
     tags: Mapped[list | None] = mapped_column(JSON)
     category_id: Mapped[str | None] = mapped_column(String(16))
     # Public statistics only. Private analytics (CTR, retention, revenue)

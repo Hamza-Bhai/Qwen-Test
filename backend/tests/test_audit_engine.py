@@ -50,7 +50,7 @@ class FakeVideo:
 
     def __init__(self, vid="v", title="Some title here", views=0, likes=None,
                  comments=None, days_ago=10, duration=None, description="desc",
-                 synced_days_ago=None):
+                 synced_days_ago=None, width=None, height=None):
         self.youtube_video_id = vid
         self.title = title
         self.view_count = views
@@ -58,6 +58,8 @@ class FakeVideo:
         self.comment_count = comments
         self.published_at = NOW - timedelta(days=days_ago)  # float-safe
         self.duration_seconds = duration
+        self.content_width = width
+        self.content_height = height
         self.thumbnail_url = None
         self.description = description
         self.last_synced_at = (
@@ -736,3 +738,45 @@ class TestInconclusiveFindingsNeverScored:
         hs = compute_health_score(findings, perf, 100.0, [_rank("a", 10)], NOW, CFG)
         comp = next(c for c in hs.components if c["name"] == "recent_trend")
         assert comp["score"] == pytest.approx(50.0, abs=0.1)  # 0.6/1.2*100
+
+class TestFormatClassificationWithDimensions:
+    """Duration + portrait contentDetails.dimension => better-estimated counts.
+
+    YouTube's Data API v3 has no official Shorts flag, so labels remain
+    estimates; the dimension signal only removes known misclassifications."""
+
+    def test_landscape_and_unknown_dimensions_keep_duration_rule(self):
+        assert classify_format(301, CFG.short_max_seconds) == "estimated-longform"
+        assert classify_format(301, CFG.short_max_seconds, 1920, 1080) == "estimated-longform"
+        assert classify_format(120, CFG.short_max_seconds, 1920, 1080) == "estimated-shorts"
+
+    def test_portrait_short_still_shorts(self):
+        assert classify_format(60, CFG.short_max_seconds, 1080, 1920) == "estimated-shorts"
+
+    def test_portrait_ambiguous_band_is_unknown_not_longform(self):
+        # A 7-minute PORTRAIT video may be a Short or a regular upload;
+        # claiming long-form would silently skew the format split stats.
+        assert classify_format(420, CFG.short_max_seconds, 1080, 1920) == "unknown"
+        assert classify_format(600, CFG.short_max_seconds, 720, 1280) == "unknown"
+
+    def test_portrait_over_600s_is_longform(self):
+        assert classify_format(601, CFG.short_max_seconds, 1080, 1920) == "estimated-longform"
+
+    def test_counts_separate_estimated_from_unknown(self):
+        vids = [
+            FakeVideo(vid=f"s{i}", duration=45, width=1080, height=1920) for i in range(6)
+        ] + [FakeVideo(vid=f"l{i}", duration=900, width=1920, height=1080) for i in range(6)] \
+          + [FakeVideo(vid="amb", duration=420, width=1080, height=1920),
+             FakeVideo(vid="nodim", duration=200)]
+        perf = compute_performance(vids, CFG, NOW)
+        assert perf.shorts_count == 7      # 6 portrait shorts + 1 short w/o dims
+        assert perf.longform_count == 6
+        assert perf.format_unclassified == 1  # the ambiguous portrait 420s video
+
+    def test_rankings_use_dimension_estimate(self):
+        vids = [FakeVideo(duration=420, width=1080, height=1920),
+                FakeVideo(duration=420, width=1920, height=1080)]
+        rows, _ = rank_videos(vids, CFG, NOW)
+        assert rows[0].form == "unknown"           # portrait ambiguous band
+        assert rows[1].form == "estimated-longform"  # landscape same duration
+
