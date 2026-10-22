@@ -13,7 +13,7 @@ from app.analytics.audit import (
     AuditConfig,
     VideoRanking,
     classify_format,
-    compute_health_score,
+    compute_scores,
     compute_performance,
     detect_outliers,
     group_topics,
@@ -293,6 +293,10 @@ class TestHealthScore:
         from app.analytics.audit import PerformanceStats
         return PerformanceStats(**defaults)
 
+    @staticmethod
+    def _names(hs):
+        return {c["name"] for c in hs.components if c["name"] != "coverage"}
+
     def test_score_within_bounds_and_documented_weights(self):
         findings = [
             type("F", (), {"key": "upload_consistency", "status": "ok",
@@ -303,26 +307,57 @@ class TestHealthScore:
             type("F", (), {"key": "concentration", "status": "ok",
                            "evidence": {"top5_share_of_views": 0.3}})(),
         ]
-        hs = compute_health_score(findings, self._perf(), 100.0, [_rank("a", 10)], NOW, CFG)
-        assert hs.score is not None and 0 <= hs.score <= 100
-        assert hs.band in ("healthy", "watch", "at-risk")
-        names = {c["name"] for c in hs.components}
-        assert names == {"recency", "consistency", "recent_trend", "distribution", "engagement"}
-        assert any("Weights:" in c for c in hs.caveats)
+        activity, performance = compute_scores(findings, self._perf(), [_rank("a", 10)], CFG)
+        for hs in (activity, performance):
+            assert hs.score is not None and 0 <= hs.score <= 100
+            assert hs.band in ("healthy", "watch", "at-risk")
+            assert any("Weights:" in c for c in hs.caveats)
+        assert self._names(activity) == {"recency", "consistency"}
+        assert self._names(performance) == {"recent_trend", "distribution", "engagement"}
 
     def test_missing_components_excluded_not_penalized(self):
         # No findings at all + no likes available => only recency scores.
-        hs = compute_health_score([], self._perf(like_to_view_ratio=None, total_likes=None),
-                                  None, [], NOW, CFG)
-        assert [c["name"] for c in hs.components] == ["recency"]
-        assert hs.score == 100  # full marks on the sole available component
-        assert any("excludes components lacking data" in c for c in hs.caveats)
+        activity, performance = compute_scores([], self._perf(like_to_view_ratio=None, total_likes=None), [], CFG)
+        assert self._names(activity) == {"recency"}
+        assert activity.score == 100  # full marks on the sole available component
+        assert any("excludes components lacking data" in c for c in activity.caveats)
+        assert performance.score is None and performance.band == "insufficient-data"
 
     def test_no_data_returns_none_score(self):
         perf = self._perf(days_since_last_upload=None, like_to_view_ratio=None)
-        hs = compute_health_score([], perf, None, [], NOW, CFG)
-        assert hs.score is None
-        assert hs.band == "insufficient-data"
+        for hs in compute_scores([], perf, [], CFG):
+            assert hs.score is None
+            assert hs.band == "insufficient-data"
+
+    def test_performance_needs_two_components(self):
+        # Engagement alone is too thin to call audience response.
+        _, performance = compute_scores([], self._perf(), [_rank("a", 10)], CFG)
+        assert self._names(performance) == {"engagement"}
+        assert performance.score is None
+        assert any("at least 2" in c for c in performance.caveats)
+
+    def test_regular_uploads_do_not_hide_weak_response(self):
+        # AXIOM-like: perfectly regular, but views concentrated and low likes.
+        findings = [
+            type("F", (), {"key": "upload_consistency", "status": "ok",
+                           "evidence": {"median_gap_days": 1, "gaps_over_3x_median": 0,
+                                        "total_gaps": 40, "observed_span_days": 48}})(),
+            type("F", (), {"key": "concentration", "status": "detected",
+                           "evidence": {"top5_share_of_views": 0.74}})(),
+        ]
+        activity, performance = compute_scores(
+            findings, self._perf(days_since_last_upload=1, like_to_view_ratio=0.01), [_rank("a", 10)], CFG)
+        assert activity.score == 100
+        assert performance.score < 55 and performance.band == "at-risk"
+
+    def test_performance_context_is_reported_not_scored(self):
+        rows = [_rank(f"v{i}", 10) for i in range(3)]  # view_count 300 each
+        _, performance = compute_scores([], self._perf(longform_median_vpd=10.0), rows, CFG,
+                                        subscriber_count=1000)
+        ctx = {c["name"]: c["value"] for c in performance.context}
+        assert ctx["median_views_per_subscriber"] == pytest.approx(0.3)
+        assert ctx["longform_median_views_per_day"] == 10.0
+        assert "median_views_per_subscriber" not in self._names(performance)
 
 
 # ------------------------------------------------- reliability review additions
@@ -332,6 +367,7 @@ class FakeChannel:
         self.youtube_channel_id = "UCfake"
         self.title = "Fake Channel"
         self.video_count = 50
+        self.subscriber_count = None
         self.last_synced_at = last_synced_at
 
 
@@ -417,7 +453,7 @@ class TestProvenanceAndFreshness:
     def test_score_caveats_deny_official_benchmarks(self):
         vids = [FakeVideo(views=100 * (i + 1), days_ago=10 * (i + 1), likes=5) for i in range(12)]
         audit = _run_audit_on(vids)
-        caveats = " ".join(audit.health_score.caveats).lower()
+        caveats = " ".join(audit.performance_score.caveats).lower()
         assert "not official youtube standards" in caveats
         assert "significance" in caveats
 
@@ -555,7 +591,7 @@ class TestTrendCohortEligibility:
         assert ("independent" in tr.explanation or "days old" in tr.explanation
                 or "at least 2 mature" in tr.explanation)
         # And the trend component must not enter the health score.
-        names = {c["name"] for c in audit.health_score.components}
+        names = {c["name"] for c in audit.performance_score.components}
         assert "recent_trend" not in names
 
     def test_separate_cohorts_still_computed(self):
@@ -568,7 +604,7 @@ class TestTrendCohortEligibility:
         assert tr.status != "inconclusive"
         assert tr.evidence["independent_history_videos"] >= 3
         assert tr.evidence["ratio"] is not None
-        assert "recent_trend" in {c["name"] for c in audit.health_score.components}
+        assert "recent_trend" in {c["name"] for c in audit.performance_score.components}
 
     def test_overlapping_partial_history_still_needs_three_independent(self):
         hist = [FakeVideo(vid=f"h{i}", views=10_000, days_ago=200)
@@ -706,7 +742,7 @@ class TestHealthScoreCoverage:
                           days_ago=round(34.2 - i * (4.2 / 49), 4))
                 for i in range(50)]
         audit = _run_audit_on(vids)
-        hs = audit.health_score
+        hs = audit.activity_score  # consistency excluded (<30-day span)
         cov = next(c for c in hs.components if c["name"] == "coverage")
         assert cov["score"] < 100
         if hs.score is not None and cov["score"] < 50:
@@ -725,10 +761,10 @@ class TestHealthScoreCoverage:
             vids.append(FakeVideo(vid=f"e{i}", views=8000 + i * 100,
                                   days_ago=10 + i * 12, likes=400))
         audit = _run_audit_on(vids)
-        hs = audit.health_score
-        cov = next(c for c in hs.components if c["name"] == "coverage")
-        assert cov["score"] >= 80
-        assert not any("PROVISIONAL" in c for c in hs.caveats)
+        for hs in (audit.activity_score, audit.performance_score):
+            cov = next(c for c in hs.components if c["name"] == "coverage")
+            assert cov["score"] >= 80
+            assert not any("PROVISIONAL" in c for c in hs.caveats)
 
     def test_inconclusive_findings_never_contribute_to_score(self):
         # Trend finding inconclusive (all-recent burst) -> component excluded.
@@ -738,8 +774,8 @@ class TestHealthScoreCoverage:
         audit = _run_audit_on(vids)
         tr = next(f for f in audit.findings if f.key == "recent_trend")
         assert tr.status == "inconclusive"
-        scored = {c["name"] for c in audit.health_score.components
-                  if c.get("score") is not None and c["name"] != "coverage"}
+        scored = {c["name"] for hs in (audit.activity_score, audit.performance_score)
+                  for c in hs.components if c.get("score") is not None and c["name"] != "coverage"}
         assert "recent_trend" not in scored
         assert "consistency" not in scored  # <30-day span exclusion
 
@@ -753,7 +789,7 @@ class TestInconclusiveFindingsNeverScored:
         perf = TestHealthScore()._perf()
         findings = [type("F", (), {"key": "recent_trend", "status": "ok",
                                    "evidence": {}})()]
-        hs = compute_health_score(findings, perf, None, [_rank("a", 10)], NOW, CFG)
+        _, hs = compute_scores(findings, perf, [_rank("a", 10)], CFG)
         names = {c["name"] for c in hs.components if c.get("score") is not None}
         assert "recent_trend" not in names
 
@@ -761,7 +797,7 @@ class TestInconclusiveFindingsNeverScored:
         perf = TestHealthScore()._perf()
         findings = [type("F", (), {"key": "recent_trend", "status": "ok",
                                    "evidence": {"ratio": None}})()]
-        hs = compute_health_score(findings, perf, None, [_rank("a", 10)], NOW, CFG)
+        _, hs = compute_scores(findings, perf, [_rank("a", 10)], CFG)
         names = {c["name"] for c in hs.components if c.get("score") is not None}
         assert "recent_trend" not in names
 
@@ -769,7 +805,7 @@ class TestInconclusiveFindingsNeverScored:
         perf = TestHealthScore()._perf()
         findings = [type("F", (), {"key": "recent_trend", "status": "detected",
                                    "evidence": {"ratio": 0.6}})()]
-        hs = compute_health_score(findings, perf, 100.0, [_rank("a", 10)], NOW, CFG)
+        _, hs = compute_scores(findings, perf, [_rank("a", 10)], CFG)
         comp = next(c for c in hs.components if c["name"] == "recent_trend")
         assert comp["score"] == pytest.approx(50.0, abs=0.1)  # 0.6/1.2*100
 

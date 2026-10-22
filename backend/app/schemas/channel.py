@@ -161,6 +161,8 @@ class AuditHealthScore(BaseModel):
     components: list[dict]
     method: str
     caveats: list[str]
+    kind: str = ""
+    context: list[dict] = []
 
 
 class ChannelAuditRead(BaseModel):
@@ -174,7 +176,8 @@ class ChannelAuditRead(BaseModel):
     config: dict
     formulas: dict
     performance: AuditPerformance
-    health_score: AuditHealthScore
+    activity_score: AuditHealthScore
+    performance_score: AuditHealthScore
     findings: list[AuditFinding]
     top_performers: list[AuditVideoRanking]
     underperformers: list[AuditVideoRanking]

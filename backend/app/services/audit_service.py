@@ -23,8 +23,10 @@ def audit_channel(db: Session, channel: Channel, *, persist: bool = False) -> Ch
             videos_synced=audit.performance.videos_analyzed,
             quota_units_used=0,  # audits spend zero YouTube quota
             summary={
-                "health_score": audit.health_score.score,
-                "band": audit.health_score.band,
+                "activity_score": audit.activity_score.score,
+                "activity_band": audit.activity_score.band,
+                "performance_score": audit.performance_score.score,
+                "performance_band": audit.performance_score.band,
                 "findings_detected": [f.key for f in audit.findings if f.status == "detected"],
                 "videos_analyzed": audit.performance.videos_analyzed,
             },

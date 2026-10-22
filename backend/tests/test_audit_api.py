@@ -51,7 +51,7 @@ class TestAuditEndpoint:
 
         body = resp.json()
         # Shape checks per ChannelAuditRead
-        for key in ("performance", "health_score", "findings", "top_performers",
+        for key in ("performance", "activity_score", "performance_score", "findings", "top_performers",
                     "underperformers", "outliers", "strong_topics", "weak_topics",
                     "notes", "formulas", "config"):
             assert key in body
@@ -92,12 +92,15 @@ class TestAuditEndpoint:
             assert f["recommended_action"]
             assert f["kind"] in ("fact", "heuristic")
 
-    def test_health_score_none_when_insufficient(self, client, analyzed):
+    def test_scores_none_when_insufficient(self, client, analyzed):
         body = client.get(f"/api/v1/channels/{analyzed['channel']['id']}/audit").json()
-        hs = body["health_score"]
-        # A single fresh upload can score recency but nothing else; document it.
-        assert hs["score"] is None or 0 <= hs["score"] <= 100
-        assert any("excludes components lacking data" in c for c in hs["caveats"])
+        for key in ("activity_score", "performance_score"):
+            hs = body[key]
+            assert hs["kind"] == key.split("_")[0]
+            assert hs["score"] is None or 0 <= hs["score"] <= 100
+            assert any("excludes components lacking data" in c for c in hs["caveats"])
+        # One video cannot show audience response.
+        assert body["performance_score"]["score"] is None
 
     def test_get_audit_is_read_only(self, client, analyzed):
         cid = analyzed["channel"]["id"]

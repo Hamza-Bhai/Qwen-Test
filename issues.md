@@ -19,10 +19,10 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 6 | P1 | Upcoming premieres / live streams not filtered | ✅ |
 | 7 | P1 | Analysis limited to latest 50 videos | ✅ |
 | 8 | P1 | Shorts and long-form share one baseline | ✅ |
-| 9 | P1 | Health score does not measure views | ☐ |
+| 9 | P1 | Health score does not measure views | ✅ |
 | 10 | P1 | Views/day is biased against older videos | ☐ |
 | 11 | P1 | Overview and Audit use different video sets | ☐ |
-| 12 | P2 | Duplicated "coverage" label in Health score UI | ☐ |
+| 12 | P2 | Duplicated "coverage" label in Health score UI | ✅ |
 | 13 | P2 | Subscriber count shown as exact (API rounds it) | ☐ |
 | 14 | P2 | Uploads/month uses n/span instead of (n−1)/span | ☐ |
 | 15 | P2 | Quota day uses UTC; YouTube resets at Pacific midnight | ☐ |
@@ -139,7 +139,11 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Fix:** compute baseline (and rankings/outliers/topics) per format.
 - **Test:** mixed set where each format is internally uniform → no underperformers.
 
-## 9. [P1] Health score does not measure views
+## 9. [P1] Health score does not measure views — ✅ fixed (split into two scores)
+
+- **Done:** `activity_score` (recency, consistency) and `performance_score` (trend vs own same-format
+  history, view spread, like/view; needs >= 2 components). Views/day per format and views per subscriber
+  shown as context, never scored. AXIOM: Activity 100 vs Performance 47 "at-risk" (was one 79 "Healthy").
 
 - **Where:** `compute_health_score` — components are recency, consistency, trend, distribution, engagement.
 - **Evidence (AXIOM):** score 79 "Healthy" while videos get ~1 view/day.
@@ -159,7 +163,9 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Impact:** numbers diverge over time; videos deleted/privated on YouTube stay forever with stale stats.
 - **Fix:** one shared "analysis set" query; mark videos missing from the latest sync as removed.
 
-## 12. [P2] Duplicated "coverage" label in Health score UI
+## 12. [P2] Duplicated "coverage" label in Health score UI — ✅ fixed with #9
+
+- **Done:** coverage shown once per score card as a sentence; shared caveats listed once.
 
 - **Where:** [frontend/src/components/channel-audit.tsx:475-492](frontend/src/components/channel-audit.tsx#L475-L492).
 - **Evidence:** "Coverage" component name + "score coverage" badge; amber banner and

@@ -40,7 +40,7 @@ never penalized for unavailable metrics. Weights are listed in WEIGHTS.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median
 from typing import Any
@@ -96,6 +96,8 @@ class AuditConfig:
 
 
 FORMULAS: dict[str, str] = {
+    "activity_score": "weighted mean of recency (0.25) and consistency (0.20): is the creator publishing regularly? Needs >= 1 scored component",
+    "performance_score": "weighted mean of recent_trend (0.25, vs the channel's own same-format history), distribution (0.15, top-5 view share) and engagement (0.15, like/view): how is the audience responding? Needs >= 2 scored components. Views/day and views per subscriber are shown as context, never scored (no fair public benchmark)",
     "analysis_set": f"uploads published in the last {ANALYSIS_WINDOW_DAYS} days; if fewer than {ANALYSIS_MIN_VIDEOS}, the latest {ANALYSIS_MIN_VIDEOS} uploads instead; never more than {ANALYSIS_MAX_VIDEOS} (newest first). Scheduled premieres and live streams excluded. The real date span is reported in `coverage`",
     "age_days": "max(1, floor((now_utc - published_at) / 1 day)); undated videos have age unknown and are excluded from mature rankings",
     "views_per_day": "view_count / age_days  (age-normalized comparison metric; for videos under 7 days old this is PROVISIONAL early traction only)",
@@ -127,6 +129,17 @@ WEIGHTS: dict[str, float] = {
     "distribution": 0.15,      # healthy spread (not one-hit-wonder dependent)
     "engagement": 0.15,        # like+comment ratios vs channel median
 }
+
+# Two separate scores so regular uploading can never hide a weak audience
+# response (or the other way round):
+#   activity    — what the creator controls: publishing recency and rhythm
+#   performance — how the audience responds: trend vs own history, view
+#                 spread across videos, like/view ratio
+SCORE_GROUPS: dict[str, tuple[str, ...]] = {
+    "activity": ("recency", "consistency"),
+    "performance": ("recent_trend", "distribution", "engagement"),
+}
+SCORE_MIN_COMPONENTS = {"activity": 1, "performance": 2}
 
 
 # --------------------------------------------------------------------- DTOs
@@ -214,6 +227,8 @@ class HealthScore:
     components: list[dict[str, Any]]
     method: str
     caveats: list[str]
+    kind: str = ""                      # "activity" | "performance"
+    context: list[dict[str, Any]] = field(default_factory=list)  # shown, never scored
 
 
 @dataclass
@@ -226,7 +241,8 @@ class ChannelAudit:
     config: dict[str, Any]
     formulas: dict[str, str]
     performance: PerformanceStats
-    health_score: HealthScore
+    activity_score: HealthScore
+    performance_score: HealthScore
     findings: list[Finding]
     top_performers: list[VideoRanking]
     underperformers: list[VideoRanking]
@@ -1024,11 +1040,11 @@ def build_findings(
     return findings
 
 
-# --------------------------------------------------------------------- health score
-def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseline: float | None,
-                         rows: list[VideoRanking], now: datetime, cfg: AuditConfig) -> HealthScore:
-    """Transparent weighted score. Components with insufficient data are
-    EXCLUDED and weights renormalized — missing data never costs points."""
+# --------------------------------------------------------------------- scores
+def score_components(findings: list[Finding], perf: PerformanceStats,
+                     rows: list[VideoRanking], cfg: AuditConfig) -> list[dict[str, Any]]:
+    """All scoreable components. Components with insufficient data are left
+    out (or marked excluded) — missing data never costs points."""
     comps: list[dict[str, Any]] = []
 
     def add(name: str, raw: float | None, note: str) -> None:
@@ -1063,38 +1079,86 @@ def compute_health_score(findings: list[Finding], perf: PerformanceStats, baseli
     if tr and tr.status != "inconclusive":
         ratio = tr.evidence.get("ratio")
         if ratio is not None:
-            raw = min(1.0, max(0.0, ratio / 1.2))  # 120%+ of baseline => full marks
-            add("recent_trend", raw, f"recent/history views-per-day ratio {ratio:.2f}")
+            raw = min(1.0, max(0.0, ratio / 1.2))  # 120%+ of own history => full marks
+            add("recent_trend", raw, f"recent/history views-per-day ratio {ratio:.2f} (same format)")
     # distribution (concentration)
     cc = next((f for f in findings if f.key == "concentration"), None)
     if cc and cc.status != "inconclusive" and cc.evidence.get("top5_share_of_views") is not None:
         share = cc.evidence["top5_share_of_views"]
         raw = max(0.0, min(1.0, 1.0 - max(0.0, share - 0.35) / 0.5))
         add("distribution", raw, f"top-5 view share {share*100:.0f}%")
-    # engagement (relative to channel's own videos — avoids arbitrary global bar)
+    # engagement
     if perf.like_to_view_ratio is not None and rows:
         # Soft linear scale: 5% like/view ratio maps to full marks.
         raw = min(1.0, perf.like_to_view_ratio / 0.05)
         add("engagement", raw, f"like/view ratio {perf.like_to_view_ratio*100:.2f}% (soft cap 5%)")
+    return comps
 
+
+def _performance_context(perf: PerformanceStats, rows: list[VideoRanking],
+                         subscriber_count: int | None) -> list[dict[str, Any]]:
+    """Plain numbers shown next to the performance score. No fair benchmark
+    exists in public data, so they are never turned into points."""
+    ctx = []
+    if perf.shorts_median_vpd is not None:
+        ctx.append({"name": "shorts_median_views_per_day", "value": round(perf.shorts_median_vpd, 2),
+                    "note": f"median views/day of Shorts at least {MIN_AGE_DAYS_FOR_RANKING} days old"})
+    if perf.longform_median_vpd is not None:
+        ctx.append({"name": "longform_median_views_per_day", "value": round(perf.longform_median_vpd, 2),
+                    "note": f"median views/day of long-form videos at least {MIN_AGE_DAYS_FOR_RANKING} days old"})
+    mature_views = [r.view_count for r in rows if r.mature]
+    if mature_views and subscriber_count:
+        ctx.append({"name": "median_views_per_subscriber",
+                    "value": round(median(mature_views) / subscriber_count, 4),
+                    "note": "median views of mature videos ÷ subscribers (subscriber count is rounded by YouTube)"})
+    return ctx
+
+
+def _build_score(kind: str, comps: list[dict[str, Any]],
+                 context: list[dict[str, Any]] | None = None) -> HealthScore:
+    names = SCORE_GROUPS[kind]
+    weights = {k: WEIGHTS[k] for k in names}
+    group = [dict(c) for c in comps if c["name"] in names]
     caveats = [
         "Score excludes components lacking data instead of penalizing them.",
-        "Weights: " + ", ".join(f"{k}={v}" for k, v in WEIGHTS.items()),
+        "Weights: " + ", ".join(f"{k}={v}" for k, v in weights.items()),
         "Based only on public YouTube Data API v3 fields; CTR, impression counts and audience retention are private Analytics metrics that do not exist in public data.",
         "Thresholds (e.g. 5% like/view cap, 30-day recency window, 35%/60% concentration bands) are internal heuristics — NOT official YouTube standards.",
         "The score is a relative self-assessment against the channel's own history plus soft fixed caps; it is not comparable across different channels.",
         "No statistical significance testing is performed; small samples reduce which components can be scored at all.",
     ]
-    if not comps or all(c.get("score") is None for c in comps):
-        return HealthScore(None, "insufficient-data", [], "weighted mean of available components (renormalized weights)",
-                           caveats + ["No component had enough data to score."])
-    scorable = [c for c in comps if c.get("score") is not None]
+    method = "score = Σ(component × weight) / Σ(weights present); each component ∈ [0,100]"
+    scorable = [c for c in group if c.get("score") is not None]
+    min_needed = SCORE_MIN_COMPONENTS[kind]
+    if len(scorable) < min_needed:
+        reason = ("No component had enough data to score." if not scorable else
+                  f"Needs at least {min_needed} scored components; only {len(scorable)} had enough data.")
+        return HealthScore(None, "insufficient-data", group, method, caveats + [reason], kind, context or [])
+
     wsum = sum(c["weight"] for c in scorable)
     score = sum(c["score"] * c["weight"] for c in scorable) / wsum
     band = "healthy" if score >= 75 else "watch" if score >= 55 else "at-risk"
-    return HealthScore(round(score), band, comps,
-                       "score = Σ(component × weight) / Σ(weights present); each component ∈ [0,100]",
-                       caveats)
+
+    # Coverage: never present partial data as a comprehensive assessment.
+    total_w = sum(weights.values())
+    coverage_pct = round(wsum / total_w * 100) if total_w else 0
+    if coverage_pct < 50:
+        caveats.insert(0, f"PROVISIONAL SCORE: only {coverage_pct}% of this score's component weight "
+                          "could be computed from available data. Treat this as a limited snapshot.")
+    elif coverage_pct < 80:
+        caveats.insert(0, f"PARTIAL COVERAGE: components worth {100 - coverage_pct}% of this score's "
+                          "weighting were excluded for lack of data; see the component list.")
+    group.append({"name": "coverage", "weight": None, "score": coverage_pct,
+                  "note": f"{round(wsum, 2)} of {round(total_w, 2)} weight points had enough data to score"})
+    return HealthScore(round(score), band, group, method, caveats, kind, context or [])
+
+
+def compute_scores(findings: list[Finding], perf: PerformanceStats, rows: list[VideoRanking],
+                   cfg: AuditConfig, subscriber_count: int | None = None) -> tuple[HealthScore, HealthScore]:
+    """(activity, performance) — see SCORE_GROUPS."""
+    comps = score_components(findings, perf, rows, cfg)
+    return (_build_score("activity", comps),
+            _build_score("performance", comps, _performance_context(perf, rows, subscriber_count)))
 
 
 # --------------------------------------------------------------------- analysis set
@@ -1180,7 +1244,8 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
     outliers = detect_outliers(rows)
     strong, weak = group_topics(rows)
     findings = build_findings(videos, rows, perf, baseline, outliers, cfg, now)
-    score = compute_health_score(findings, perf, baseline, rows, now, cfg)
+    activity_score, performance_score = compute_scores(findings, perf, rows, cfg,
+                                                       channel.subscriber_count)
 
     notes: list[str] = []
     insufficient = perf.videos_analyzed < MIN_VIDEOS_FOR_FINDINGS
@@ -1226,31 +1291,6 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
             "early traction — their views/day is not yet a settled performance rate."
         )
 
-    # ---- health-score coverage (never present partial data as comprehensive) ----
-    scored_w = sum(c["weight"] for c in score.components if c.get("score") is not None)
-    total_w = sum(WEIGHTS.values())
-    coverage_pct = round(scored_w / total_w * 100) if total_w else 0
-    if score.score is not None:
-        if coverage_pct < 50:
-            score.caveats.insert(
-                0,
-                f"PROVISIONAL SCORE: only {coverage_pct}% of the standard component weight could be "
-                "computed from available data. Treat this as a limited snapshot, not a comprehensive "
-                "channel assessment.",
-            )
-        elif coverage_pct < 80:
-            score.caveats.insert(
-                0,
-                f"PARTIAL COVERAGE: components worth {100 - coverage_pct}% of the standard weighting "
-                "were excluded for lack of data; see the component list below.",
-            )
-        score.components.append({
-            "name": "coverage",
-            "weight": None,
-            "score": coverage_pct,
-            "note": f"{round(scored_w, 2)} of {round(total_w, 2)} standard weight points had enough data to score",
-        })
-
     return ChannelAudit(
         channel_id=channel.id,
         youtube_channel_id=channel.youtube_channel_id,
@@ -1260,7 +1300,8 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         config=asdict(cfg),
         formulas=dict(FORMULAS),
         performance=perf,
-        health_score=score,
+        activity_score=activity_score,
+        performance_score=performance_score,
         findings=findings,
         top_performers=mature_desc[:10],
         # Underperformance requires >=7 days of observation AND a computable

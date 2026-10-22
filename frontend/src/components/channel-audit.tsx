@@ -41,6 +41,7 @@ import {
 } from "@/lib/format";
 import type {
   AuditFinding,
+  AuditHealthScore,
   AuditTopicGroup,
   AuditCoverage,
   AuditVideoRanking,
@@ -225,14 +226,14 @@ function EvidenceList({ evidence }: { evidence: Record<string, unknown> }) {
   );
 }
 
-function ScoreGauge({ score, band }: { score: number; band: string }) {
+function ScoreGauge({ score, band, label }: { score: number; band: string; label: string }) {
   const color =
     band === "healthy" ? "#16a34a" : band === "watch" ? "#d97706" : band === "at-risk" ? "#dc2626" : "#6b7280";
   return (
     <div className="flex items-center gap-4">
       <div
         role="img"
-        aria-label={`Health score ${score} out of 100`}
+        aria-label={`${label} ${score} out of 100`}
         className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-8"
         style={{ borderColor: color }}
       >
@@ -240,10 +241,97 @@ function ScoreGauge({ score, band }: { score: number; band: string }) {
         <span className="absolute -bottom-5 text-[10px] uppercase tracking-wide text-muted-foreground">/ 100</span>
       </div>
       <div>
-        <p className="text-sm text-muted-foreground">Overall health band</p>
+        <p className="text-sm text-muted-foreground">{label} band</p>
         <p className="text-lg font-semibold capitalize">{band}</p>
       </div>
     </div>
+  );
+}
+
+const CONTEXT_LABELS: Record<string, string> = {
+  shorts_median_views_per_day: "Shorts: median views/day",
+  longform_median_views_per_day: "Long-form: median views/day",
+  median_views_per_subscriber: "Median views per subscriber",
+};
+
+/** One score card. Coverage is shown once as a line (not as a component), and
+ *  context numbers are listed separately because they are never scored. */
+function ScoreCard({ title, question, hs }: { title: string; question: string; hs: AuditHealthScore }) {
+  const coverage = hs.components.find((c) => c.name === "coverage");
+  const components = hs.components.filter((c) => c.name !== "coverage");
+  const partial = hs.caveats.some((c) => c.startsWith("PROVISIONAL SCORE") || c.startsWith("PARTIAL COVERAGE"));
+  const reason = hs.caveats.find((c) => c.startsWith("Needs at least") || c.startsWith("No component had"));
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Activity className="h-4 w-4" aria-hidden="true" /> {title}
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">{question}</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hs.score === null || !hs.band ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            Not enough data for this score yet. {reason}
+          </p>
+        ) : (
+          <>
+            <ScoreGauge score={hs.score} band={hs.band} label={title} />
+            {partial && (
+              <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Based on partial data only
+                {coverage ? ` (${formatNumber(coverage.score)}% of this score's weight could be measured)` : ""} — not a
+                comprehensive assessment.
+              </p>
+            )}
+          </>
+        )}
+        {components.length > 0 && (
+          <ul className="space-y-2 pt-2">
+            {components.map((c) => {
+              // Excluded / unscored components are shown honestly as excluded —
+              // never rendered as a zero-width bar that implies "score 0".
+              const unscored = c.excluded === true || c.score === null;
+              return (
+                <li key={c.name} className="text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="capitalize">{c.name.replace(/_/g, " ")}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {unscored
+                        ? "excluded from score"
+                        : `${formatNumber(c.score)}${c.weight !== null && c.weight !== undefined ? ` · weight ${c.weight}` : ""}`}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    {!unscored && (
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${Math.max(0, Math.min(100, c.score ?? 0))}%` }}
+                      />
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {hs.context && hs.context.length > 0 && (
+          <div className="border-t pt-3">
+            <p className="text-xs font-medium">Context (shown, not scored)</p>
+            <ul className="mt-1 space-y-1">
+              {hs.context.map((c) => (
+                <li key={c.name} className="flex justify-between gap-2 text-xs text-muted-foreground" title={c.note}>
+                  <span>{CONTEXT_LABELS[c.name] ?? c.name.replace(/_/g, " ")}</span>
+                  <span className="tabular-nums">{formatDecimal(c.value, c.value < 1 ? 3 : 1)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -414,7 +502,19 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
 
   const audit: ChannelAudit = data;
   const perf = audit.performance;
-  const hs = audit.health_score;
+  // Caveats shared by both scores, shown once (coverage warnings stay on each card).
+  const sharedCaveats = Array.from(
+    new Set(
+      [...audit.activity_score.caveats, ...audit.performance_score.caveats].filter(
+        (c) =>
+          !c.startsWith("PROVISIONAL SCORE") &&
+          !c.startsWith("PARTIAL COVERAGE") &&
+          !c.startsWith("Weights:") &&
+          !c.startsWith("Needs at least") &&
+          !c.startsWith("No component had")
+      )
+    )
+  );
   const findings = [...audit.findings].sort(
     (a, b) => (SEVERITY_ORDER[a.severity] ?? 4) - (SEVERITY_ORDER[b.severity] ?? 4)
   );
@@ -482,79 +582,19 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
       {/* Reliability-transparency panel (freshness / provenance / limits). */}
       <TransparencyPanel audit={audit} />
 
-      {/* A. Health score */}
+      {/* A. Scores: activity (creator) and performance (audience) kept apart */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="h-4 w-4" aria-hidden="true" /> Health score
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {hs.score === null || !hs.band ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No component had enough data to produce a score.
-              </p>
-            ) : (
-              <>
-                <ScoreGauge score={hs.score} band={hs.band} />
-                {hs.caveats.some((c) => c.startsWith("PROVISIONAL SCORE") || c.startsWith("PARTIAL COVERAGE")) && (
-                  <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    This score is based on partial data only — see the coverage figure and caveats below. It is not a
-                    comprehensive channel assessment.
-                  </p>
-                )}
-                <ul className="space-y-2 pt-4">
-                  {hs.components.map((c) => {
-                    // Excluded / unscored components (e.g. consistency over a
-                    // short observation window) are shown honestly as excluded —
-                    // never rendered as a zero-width bar that implies "score 0".
-                    const isCoverage = c.name === "coverage";
-                    const unscored = c.excluded === true || c.score === null;
-                    return (
-                      <li key={c.name} className="text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="capitalize">
-                            {c.name.replace(/_/g, " ")}
-                            {isCoverage && <Badge variant="outline" className="ml-2 align-middle normal-case">score coverage</Badge>}
-                          </span>
-                          <span className="tabular-nums text-muted-foreground">
-                            {unscored && !isCoverage
-                              ? "excluded from score"
-                              : `${formatNumber(c.score)}${isCoverage ? "%" : ""}${
-                                  c.weight !== null && c.weight !== undefined ? ` · weight ${c.weight}` : ""
-                                }`}
-                          </span>
-                        </div>
-                        {!isCoverage && (
-                          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                            {!unscored && (
-                              <div
-                                className="h-full rounded-full bg-primary"
-                                style={{ width: `${Math.max(0, Math.min(100, c.score ?? 0))}%` }}
-                              />
-                            )}
-                          </div>
-                        )}
-                        <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <ScoreCard title="Activity score" question="Are you publishing regularly?" hs={audit.activity_score} />
+        <ScoreCard title="Performance score" question="How is your audience responding?" hs={audit.performance_score} />
 
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Methodology & caveats</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p className="rounded-md bg-muted/50 p-2 font-mono text-xs">{hs.method}</p>
+            <p className="rounded-md bg-muted/50 p-2 font-mono text-xs">{audit.activity_score.method}</p>
             <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-              {hs.caveats.map((c, i) => (
+              {sharedCaveats.map((c, i) => (
                 <li key={i}>{c}</li>
               ))}
             </ul>

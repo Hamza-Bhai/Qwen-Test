@@ -165,6 +165,9 @@ export interface AuditHealthScore {
   components: AuditHealthComponent[];
   method: string;
   caveats: string[];
+  kind?: "activity" | "performance";
+  /** Plain numbers shown next to the score — never turned into points. */
+  context?: { name: string; value: number; note: string }[];
 }
 
 export interface ChannelAudit {
@@ -176,7 +179,10 @@ export interface ChannelAudit {
   config: Record<string, unknown>;
   formulas: Record<string, string>;
   performance: AuditPerformance;
-  health_score: AuditHealthScore;
+  /** Is the creator publishing regularly? (recency, consistency) */
+  activity_score: AuditHealthScore;
+  /** How is the audience responding? (trend vs own history, view spread, likes) */
+  performance_score: AuditHealthScore;
   findings: AuditFinding[];
   top_performers: AuditVideoRanking[];
   underperformers: AuditVideoRanking[];
