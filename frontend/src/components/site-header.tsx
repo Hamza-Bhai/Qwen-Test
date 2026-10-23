@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PlayCircle, BarChart3 } from "lucide-react";
+import { PlayCircle, BarChart3, Sparkles } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -20,6 +20,13 @@ export function SiteHeader() {
           >
             <BarChart3 className="h-4 w-4" aria-hidden="true" />
             Analyze
+          </Link>
+          <Link
+            href="/studio"
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Studio
           </Link>
           <ThemeToggle />
         </nav>

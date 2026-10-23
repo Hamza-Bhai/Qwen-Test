@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useId, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useId, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 
 export interface TabItem {
@@ -14,6 +14,8 @@ export interface TabItem {
 const ShowAllContext = createContext(false);
 
 const ALL_ID = "__all__";
+
+const subscribeToNothing = () => () => {};
 
 /**
  * Minimal accessible tabs (WAI-ARIA tabs pattern, arrow/Home/End keys).
@@ -37,21 +39,22 @@ export function Tabs({
   urlParam?: string;
 }) {
   const showAll = useContext(ShowAllContext);
-  const [active, setActive] = useState(defaultId ?? tabs[0]?.id);
+  // The URL is read through useSyncExternalStore: the server snapshot is "" so
+  // server and client markup match, then the client snapshot picks up ?tab=.
+  // Later changes use replaceState (no history flood) and are mirrored in `selected`.
+  const search = useSyncExternalStore(
+    subscribeToNothing,
+    () => window.location.search,
+    () => ""
+  );
+  const [selected, setSelected] = useState<string | null>(null);
+  const fromUrl = urlParam ? new URLSearchParams(search).get(urlParam) : null;
+  const active = selected ?? fromUrl ?? defaultId ?? tabs[0]?.id;
   const baseId = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Restore from the URL after hydration (before paint) so server and client
-  // markup match; later changes use replaceState so history isn't flooded.
-  useLayoutEffect(() => {
-    if (!urlParam) return;
-    const wanted = new URLSearchParams(window.location.search).get(urlParam);
-    if (wanted && (wanted === ALL_ID || tabs.some((t) => t.id === wanted))) setActive(wanted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlParam]);
-
   function select(id: string) {
-    setActive(id);
+    setSelected(id);
     if (!urlParam) return;
     const url = new URL(window.location.href);
     url.searchParams.set(urlParam, id);
