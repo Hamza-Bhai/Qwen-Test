@@ -21,7 +21,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 8 | P1 | Shorts and long-form share one baseline | ✅ |
 | 9 | P1 | Health score does not measure views | ✅ |
 | 10 | P1 | Views/day is biased against older videos | ☐ |
-| 11 | P1 | Overview and Audit use different video sets | ☐ |
+| 11 | P1 | Overview and Audit use different video sets | ✅ |
 | 12 | P2 | Duplicated "coverage" label in Health score UI | ✅ |
 | 13 | P2 | Subscriber count shown as exact (API rounds it) | ☐ |
 | 14 | P2 | Uploads/month uses n/span instead of (n−1)/span | ☐ |
@@ -162,6 +162,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Where:** [backend/app/analytics/metrics.py:36](backend/app/analytics/metrics.py#L36) reads ALL stored videos; audit reads latest 50.
 - **Impact:** numbers diverge over time; videos deleted/privated on YouTube stay forever with stale stats.
 - **Fix:** one shared "analysis set" query; mark videos missing from the latest sync as removed.
+- **Done:** `load_analysis_set` in audit.py is used by both Audit and Overview summary. Not done: marking removed/privated videos (needs a schema change; split out if wanted).
 
 ## 12. [P2] Duplicated "coverage" label in Health score UI — ✅ fixed with #9
 

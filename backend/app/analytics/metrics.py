@@ -10,12 +10,13 @@ genuinely synced videos — no fabricated inputs, empty input yields empty outpu
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from statistics import mean
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, Video, analyzable_video_filter
+from app.analytics.audit import load_analysis_set
+from app.db.models import Channel
 
 
 @dataclass
@@ -32,10 +33,9 @@ class ChannelSummary:
     avg_duration_seconds: float | None
 
 
-def summarize_channel(db: Session, channel: Channel) -> ChannelSummary:
-    videos = db.execute(
-        select(Video).where(Video.channel_id == channel.id, analyzable_video_filter())
-    ).scalars().all()
+def summarize_channel(db: Session, channel: Channel, now: datetime | None = None) -> ChannelSummary:
+    # Same analysis set as the audit (rolling window), not every stored video.
+    videos, _ = load_analysis_set(db, channel, now=now)
 
     views = [v.view_count for v in videos if v.view_count is not None]
     likes = [v.like_count for v in videos if v.like_count is not None]

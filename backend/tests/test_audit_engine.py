@@ -1024,3 +1024,17 @@ class TestTrendAndDistributionPerFormat:
         perf = compute_performance(vids, CFG, NOW)
         mid = next(b for b in perf.distribution_buckets if b["label"] == "80–120%")
         assert mid["videos"] == 10
+
+
+class TestOverviewMatchesAudit:
+    """Issue #11: Overview metrics and the audit use the same analysis set."""
+
+    def test_overview_summary_uses_audit_video_set(self):
+        from app.analytics.metrics import summarize_channel
+
+        vids = [FakeVideo(vid=f"o{i}", views=100, days_ago=i + 0.5) for i in range(120)]
+        channel = FakeChannel()
+        audit = _run_audit_on(vids)
+        summary = summarize_channel(FakeDB(vids), channel, NOW)
+        assert summary.videos_analyzed == audit.performance.videos_analyzed == 90
+        assert summary.total_views == 90 * 100

@@ -1203,6 +1203,22 @@ def select_analysis_set(candidates: list[Video], cfg: AuditConfig, now: datetime
     }
 
 
+def load_analysis_set(db: Session, channel: Channel, cfg: AuditConfig | None = None,
+                      now: datetime | None = None) -> tuple[list[Video], dict[str, Any]]:
+    """The one video set every metric (Audit AND Overview) is computed from."""
+    cfg = cfg or AuditConfig()
+    now = now or _utcnow()
+    candidates = list(
+        db.execute(
+            select(Video)
+            .where(Video.channel_id == channel.id, analyzable_video_filter())
+            .order_by(Video.published_at.desc())
+            .limit(cfg.max_videos)
+        ).scalars().all()
+    )
+    return select_analysis_set(candidates, cfg, now, channel.video_count)
+
+
 def _coverage_notes(cov: dict[str, Any], cfg: AuditConfig, channel: Channel) -> list[str]:
     n = cov["videos_analyzed"]
     total = channel.video_count or "unknown"
@@ -1230,15 +1246,7 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
     cfg = cfg or AuditConfig()
     now = now or _utcnow()
 
-    candidates = list(
-        db.execute(
-            select(Video)
-            .where(Video.channel_id == channel.id, analyzable_video_filter())
-            .order_by(Video.published_at.desc())
-            .limit(cfg.max_videos)
-        ).scalars().all()
-    )
-    videos, coverage = select_analysis_set(candidates, cfg, now, channel.video_count)
+    videos, coverage = load_analysis_set(db, channel, cfg, now)
     perf = compute_performance(videos, cfg, now)
     rows, baseline = rank_videos(videos, cfg, now)
     outliers = detect_outliers(rows)
