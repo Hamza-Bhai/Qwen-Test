@@ -144,17 +144,51 @@ def sync_channel(db: Session, channel: Channel) -> dict:
             video.like_count = vf["like_count"]
             video.comment_count = vf["comment_count"]
             video.last_synced_at = _utcnow()
+            video.removed_at = None  # a video that reappears is live again
             synced.append(video)
             upserted += 1
         _resolve_shorts(synced)
+    removed = _mark_removed_videos(db, channel, synced)
 
     channel.last_synced_at = _utcnow()
     db.commit()
     return {
         "channel": channel.youtube_channel_id,
         "videos_upserted": upserted,
+        "videos_removed": removed,
         "quota_units_used": service.quota.used_today() - used_before,
     }
+
+
+def _mark_removed_videos(db: Session, channel: Channel, synced: list[Video]) -> int:
+    """Flag stored videos that a sync should have seen but did not.
+
+    A sync covers the uploads from the newest one back to the oldest it
+    fetched. A stored video inside that range that the API no longer returns
+    was deleted or made private. Older videos are outside the sync's reach, so
+    they are left alone, and an empty sync marks nothing (it may be a glitch).
+    """
+    dated = [v.published_at for v in synced if v.published_at]
+    if not dated:
+        return 0
+    seen = {v.youtube_video_id for v in synced}
+
+    def aware(dt: datetime) -> datetime:
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    floor = min(aware(d) for d in dated)
+    now = _utcnow()
+    removed = 0
+    stored = db.execute(
+        select(Video).where(Video.channel_id == channel.id, Video.removed_at.is_(None))
+    ).scalars().all()
+    for video in stored:
+        if video.youtube_video_id in seen or video.published_at is None:
+            continue
+        if aware(video.published_at) >= floor:
+            video.removed_at = now
+            removed += 1
+    return removed
 
 
 def list_channels(db: Session) -> list[Channel]:
@@ -171,7 +205,7 @@ def list_videos(db: Session, channel_pk: int, *, limit: int = 100) -> list[Video
     return list(
         db.execute(
             select(Video)
-            .where(Video.channel_id == channel_pk)
+            .where(Video.channel_id == channel_pk, Video.removed_at.is_(None))
             .order_by(Video.published_at.desc())
             .limit(limit)
         )

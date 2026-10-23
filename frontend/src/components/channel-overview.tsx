@@ -135,7 +135,9 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
             ) : null}
             {sync.isSuccess ? (
               <p className="mt-2 text-xs text-muted-foreground">
-                {sync.data.videos_upserted} videos updated · {sync.data.quota_units_used} quota units
+                {sync.data.videos_upserted} videos updated
+                {sync.data.videos_removed > 0 ? ` · ${sync.data.videos_removed} removed from YouTube` : ""}
+                {" "}· {sync.data.quota_units_used} quota units
               </p>
             ) : null}
           </div>

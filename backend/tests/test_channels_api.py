@@ -381,3 +381,74 @@ class TestSyncBypassesCache:
         assert client.post(f"/api/v1/channels/{cid}/sync").status_code == 200
         # Every request of the second sync reached the API (same count again).
         assert len(calls) - after_first >= 3  # channels + playlistItems + videos
+
+
+class TestRemovedVideos:
+    """Issue #11 (second half): videos a sync no longer finds are marked removed
+    and drop out of every analysis."""
+
+    @staticmethod
+    def _add_video(cid, yt_id, published):
+        from app.db.models import Video
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            db.add(Video(channel_id=cid, youtube_video_id=yt_id, title=f"t {yt_id}",
+                         published_at=published, view_count=10))
+            db.commit()
+        finally:
+            db.close()
+
+    @staticmethod
+    def _removed_at(yt_id):
+        from sqlalchemy import select
+        from app.db.models import Video
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            return db.execute(select(Video.removed_at).where(
+                Video.youtube_video_id == yt_id)).scalar_one()
+        finally:
+            db.close()
+
+    def test_missing_video_in_sync_range_is_marked_removed(self, client, monkeypatch):
+        make_fake_get(monkeypatch)  # the API returns only AAAAAAAAAA1 (2024-01-01)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        newer = datetime(2024, 6, 1, tzinfo=timezone.utc)   # inside the synced range
+        older = datetime(2023, 1, 1, tzinfo=timezone.utc)   # before it: out of reach
+        self._add_video(cid, "GONE0000001", newer)
+        self._add_video(cid, "OLD00000001", older)
+
+        body = client.post(f"/api/v1/channels/{cid}/sync").json()
+        assert body["videos_removed"] == 1
+        assert self._removed_at("GONE0000001") is not None
+        assert self._removed_at("OLD00000001") is None
+        assert self._removed_at("AAAAAAAAAA1") is None
+
+        # Removed videos leave the Overview summary and the video list.
+        ov = client.get(f"/api/v1/channels/{cid}/overview").json()
+        assert "GONE0000001" not in [v["youtube_video_id"] for v in ov["recent_videos"]]
+        assert ov["summary"]["videos_analyzed"] == 2  # AAAAAAAAAA1 + the older stored one
+
+    def test_video_that_reappears_is_restored(self, client, monkeypatch):
+        make_fake_get(monkeypatch)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        self._add_video(cid, "AAAAAAAAAA2", datetime(2024, 6, 1, tzinfo=timezone.utc))
+        client.post(f"/api/v1/channels/{cid}/sync")
+        assert self._removed_at("AAAAAAAAAA2") is not None
+        # Simulate YouTube returning it again by backdating the stored copy's
+        # id to the one the fake API serves.
+        from sqlalchemy import update
+        from app.db.models import Video
+        from app.db.session import SessionLocal
+        db = SessionLocal()
+        try:
+            db.execute(update(Video).where(Video.youtube_video_id == "AAAAAAAAAA1")
+                       .values(removed_at=datetime(2024, 7, 1, tzinfo=timezone.utc)))
+            db.commit()
+        finally:
+            db.close()
+        client.post(f"/api/v1/channels/{cid}/sync")
+        assert self._removed_at("AAAAAAAAAA1") is None

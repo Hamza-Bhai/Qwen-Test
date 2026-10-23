@@ -199,5 +199,6 @@ async def sync_channel(channel_id: int, db: Session = Depends(get_db)):
     return SyncResult(
         channel_id=channel_id,
         videos_upserted=detail["videos_upserted"],
+        videos_removed=detail["videos_removed"],
         quota_units_used=detail["quota_units_used"],
     )

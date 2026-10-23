@@ -63,6 +63,7 @@ export interface ChannelOverview {
 export interface SyncResult {
   channel_id: number;
   videos_upserted: number;
+  videos_removed: number;
   quota_units_used: number;
 }
 

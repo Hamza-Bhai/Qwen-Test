@@ -57,6 +57,7 @@ class VideoRead(BaseModel):
 class SyncResult(BaseModel):
     channel_id: int
     videos_upserted: int
+    videos_removed: int = 0
     quota_units_used: int
 
 

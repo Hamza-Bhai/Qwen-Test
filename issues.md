@@ -162,7 +162,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 - **Where:** [backend/app/analytics/metrics.py:36](backend/app/analytics/metrics.py#L36) reads ALL stored videos; audit reads latest 50.
 - **Impact:** numbers diverge over time; videos deleted/privated on YouTube stay forever with stale stats.
 - **Fix:** one shared "analysis set" query; mark videos missing from the latest sync as removed.
-- **Done:** `load_analysis_set` in audit.py is used by both Audit and Overview summary. Not done: marking removed/privated videos (needs a schema change; split out if wanted).
+- **Done:** `load_analysis_set` in audit.py is used by both Audit and Overview summary. Removed/privated videos are now flagged by `videos.removed_at` (migration `f6a2b8d4e1c9`) when a sync no longer returns them, and are excluded from all analysis.
 
 ## 12. [P2] Duplicated "coverage" label in Health score UI — ✅ fixed with #9
 

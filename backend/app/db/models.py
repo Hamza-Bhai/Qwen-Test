@@ -15,6 +15,7 @@ Design notes
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    and_,
     or_,
     JSON,
     Boolean,
@@ -105,6 +106,9 @@ class Video(Base):
     like_count: Mapped[int | None] = mapped_column(Integer)
     comment_count: Mapped[int | None] = mapped_column(Integer)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when a sync no longer finds the video on YouTube (deleted or made
+    # private). Removed videos keep their row but leave every analysis.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")
@@ -114,8 +118,12 @@ class Video(Base):
 
 def analyzable_video_filter():
     """SQL filter excluding scheduled premieres and ongoing live streams, which
-    have no settled stats (0 views, duration P0D) and would skew analysis."""
-    return or_(Video.live_broadcast_content.is_(None), Video.live_broadcast_content == "none")
+    have no settled stats (0 views, duration P0D), and videos removed from
+    YouTube, whose stored stats are stale."""
+    return and_(
+        Video.removed_at.is_(None),
+        or_(Video.live_broadcast_content.is_(None), Video.live_broadcast_content == "none"),
+    )
 
 
 class ApiCache(Base):
