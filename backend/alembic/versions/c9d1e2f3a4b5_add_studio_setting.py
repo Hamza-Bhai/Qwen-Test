@@ -20,6 +20,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # The dev backend's init_db() may already have created the table (create_all).
+    if sa.inspect(op.get_bind()).has_table('studio_setting'):
+        return
     op.create_table(
         'studio_setting',
         sa.Column('key', sa.String(length=64), nullable=False),

@@ -45,3 +45,26 @@ def test_alembic_upgrade_head_creates_studio_setting(tmp_path):
         con.close()
     assert "studio_setting" in tables
     assert version == "c9d1e2f3a4b5"
+
+
+def test_upgrade_is_safe_when_create_all_already_made_the_table(tmp_path):
+    """The dev backend runs create_all at startup; a later `alembic upgrade head`
+    on a database stamped at the previous revision must not fail on the table."""
+    db_file = tmp_path / "pre.db"
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_file}"}
+
+    def alembic(*args):
+        return subprocess.run(
+            [sys.executable, "-m", "alembic", *args],
+            cwd=BACKEND_DIR, env=env, capture_output=True, text=True,
+        )
+
+    assert alembic("upgrade", "b8c4d0f3e6a2").returncode == 0
+    create_all = subprocess.run(
+        [sys.executable, "-c", "from app.db.session import init_db; init_db()"],
+        cwd=BACKEND_DIR, env=env, capture_output=True, text=True,
+    )
+    assert create_all.returncode == 0, create_all.stderr
+
+    result = alembic("upgrade", "head")
+    assert result.returncode == 0, result.stderr
