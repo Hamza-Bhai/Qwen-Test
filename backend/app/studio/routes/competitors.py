@@ -13,7 +13,8 @@ from app.services.youtube import YouTubeAPIError
 from app.studio.models import StudioCompetitor, StudioCompetitorVideo
 from app.studio.routes.deps import get_serpapi
 from app.studio.routes.errors import raise_http
-from app.studio.services import competitor_sync, hooks, insights
+from app.studio.services import competitor_sync, discovery, hooks, insights
+from app.services.channel_service import get_service
 from app.studio.services import competitors as svc
 from app.studio.services.serpapi import SerpApiClient, SerpApiError
 
@@ -98,6 +99,16 @@ def competitor_new_uploads(db: Session = Depends(get_db)):
 @router.post("/mark-seen")
 def competitor_mark_seen(db: Session = Depends(get_db)):
     return {"marked": insights.mark_seen(db)}
+
+
+@router.post("/discover")
+def discover_competitors(db: Session = Depends(get_db), serp: SerpApiClient = Depends(get_serpapi)):
+    from dataclasses import asdict
+
+    try:
+        return asdict(discovery.discover(db, serp, get_service(db)))
+    except (SerpApiError, YouTubeAPIError, QuotaExceededError, ValueError) as exc:
+        raise_http(exc)
 
 
 @router.patch("/{competitor_id}", response_model=CompetitorRead)
