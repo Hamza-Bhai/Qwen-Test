@@ -227,9 +227,13 @@ def list_videos(db: Session, channel_pk: int, *, limit: int = 100) -> list[Video
 
 
 def delete_channel(db: Session, channel: Channel) -> None:
-    """Permanently delete the channel with all its videos, snapshots and history."""
+    """Permanently delete the channel with all its videos, snapshots and history,
+    plus the cached YouTube responses that only exist because of it."""
+    tokens = {channel.youtube_channel_id, channel.uploads_playlist_id}
+    tokens.update(v.youtube_video_id for v in channel.videos)
     db.delete(channel)
     db.commit()
+    ResponseCache(db).purge_matching(tokens)
 
 
 def archive_channel(db: Session, channel: Channel) -> None:

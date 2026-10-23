@@ -521,6 +521,28 @@ class TestKeepDataOnRemove:
         ov = client.get(f"/api/v1/channels/{again['id']}/overview").json()
         assert ov["summary"]["videos_analyzed"] == 0 and ov["history"] == []
 
+    def test_plain_delete_also_clears_cached_youtube_responses(self, client, monkeypatch):
+        from app.db import session as db_session
+        from app.db.models import ApiCache
+        from sqlalchemy import func, select
+
+        cid = self._synced_channel(client, monkeypatch)
+        with db_session.SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(ApiCache)) > 0
+        assert client.delete(f"/api/v1/channels/{cid}").status_code == 204
+        with db_session.SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(ApiCache)) == 0
+
+    def test_keep_data_delete_leaves_cache_alone(self, client, monkeypatch):
+        from app.db import session as db_session
+        from app.db.models import ApiCache
+        from sqlalchemy import func, select
+
+        cid = self._synced_channel(client, monkeypatch)
+        client.delete(f"/api/v1/channels/{cid}?keep_data=true")
+        with db_session.SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(ApiCache)) > 0
+
     def test_archived_channel_is_not_synced_by_the_scheduled_job(self, client, monkeypatch):
         cid = self._synced_channel(client, monkeypatch)
         client.delete(f"/api/v1/channels/{cid}?keep_data=true")
