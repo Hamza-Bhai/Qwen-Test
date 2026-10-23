@@ -19,7 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className={`${inter.className} min-h-screen bg-background`}>
+      {/* Browser extensions (e.g. Grammarly) add attributes to <body> before React
+          loads; without this React logs a harmless hydration-mismatch error. */}
+      <body className={`${inter.className} min-h-screen bg-background`} suppressHydrationWarning>
         <Providers>
           <SiteHeader />
           <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">{children}</main>
