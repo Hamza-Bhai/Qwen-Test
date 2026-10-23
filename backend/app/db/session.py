@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.base import Base
 import app.db.models  # noqa: F401  (registers all tables on Base.metadata)
+import app.studio.models  # noqa: F401  (Growth Studio tables)
 
 
 # Windows drive-letter prefix, e.g. "C:" at the start of a path.
