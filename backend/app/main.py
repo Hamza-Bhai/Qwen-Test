@@ -11,6 +11,7 @@ from app.api.routes import channels, jobs, system
 from app.core.config import get_settings
 from app.db.session import init_db
 from app.jobs.scheduler import start_scheduler, stop_scheduler
+from app.studio.routes import settings as studio_settings
 
 logging.basicConfig(level=logging.INFO)
 # httpx/httpcore log every request URL at INFO; keep them quiet so outgoing
@@ -44,6 +45,7 @@ API_PREFIX = "/api/v1"
 app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(channels.router, prefix=API_PREFIX)
 app.include_router(jobs.router, prefix=API_PREFIX)
+app.include_router(studio_settings.router, prefix=API_PREFIX)
 
 
 @app.get("/")
