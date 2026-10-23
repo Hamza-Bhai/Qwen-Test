@@ -102,6 +102,9 @@ def _resolve_shorts(videos: list[Video]) -> None:
 def sync_channel(db: Session, channel: Channel) -> dict:
     """Refresh channel stats + upsert its recent videos. Returns job detail dict."""
     service = get_service(db)
+    # A sync must fetch live data: a cached payload would be stamped with a
+    # fresh last_synced_at even though it may be minutes old.
+    service.bypass_cache = True
     used_before = service.quota.used_today()
 
     item = service.resolve_channel(channel.youtube_channel_id)

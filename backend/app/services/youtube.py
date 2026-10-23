@@ -58,6 +58,10 @@ class YouTubeService:
     def __init__(self, cache: ResponseCache, quota: QuotaTracker) -> None:
         self.cache = cache
         self.quota = quota
+        # When True, responses are always fetched from YouTube (still written
+        # to the cache). Explicit syncs set this so "last synced" never labels
+        # a cached payload as freshly fetched.
+        self.bypass_cache = False
 
     @property
     def settings(self):
@@ -80,7 +84,7 @@ class YouTubeService:
         cost = QUOTA_COSTS.get(endpoint, 1)
         cache_key = f"{endpoint}?{urlencode(sorted(params.items()))}"
 
-        if cache_ttl:
+        if cache_ttl and not self.bypass_cache:
             cached = self.cache.get(cache_key)
             if cached is not None:
                 return cached

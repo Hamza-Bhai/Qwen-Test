@@ -368,3 +368,16 @@ class TestQuotaDay:
         expected = datetime.now(QUOTA_TIMEZONE).date()
         assert QuotaTracker(db=None).today == expected
         assert QUOTA_TIMEZONE.key == "America/Los_Angeles"
+
+
+class TestSyncBypassesCache:
+    """Issue #16: an explicit sync must hit YouTube, not serve a cached payload."""
+
+    def test_second_sync_refetches_instead_of_using_cache(self, client, monkeypatch):
+        calls = make_fake_get(monkeypatch)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        assert client.post(f"/api/v1/channels/{cid}/sync").status_code == 200
+        after_first = len(calls)
+        assert client.post(f"/api/v1/channels/{cid}/sync").status_code == 200
+        # Every request of the second sync reached the API (same count again).
+        assert len(calls) - after_first >= 3  # channels + playlistItems + videos
