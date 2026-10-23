@@ -5,12 +5,14 @@ this with an external worker that triggers the same job functions.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import get_settings
 from app.jobs.sync_jobs import sync_all_channels_job
+from app.studio.jobs import DISCOVERY_JOB, SYNC_JOB, competitor_discovery_job, competitor_sync_job, job_overdue
 from app.services.cache import ResponseCache
 from app.db.session import SessionLocal
 
@@ -36,12 +38,36 @@ def start_scheduler() -> BackgroundScheduler | None:
         finally:
             db.close()
 
+    def catch_up(job_name: str, max_age: timedelta) -> dict:
+        """Run a missed job shortly after start (the app is only up while the PC is on)."""
+        db = SessionLocal()
+        try:
+            overdue = job_overdue(db, job_name, max_age)
+        finally:
+            db.close()
+        return {"next_run_time": datetime.now(timezone.utc) + timedelta(seconds=60)} if overdue else {}
+
     _scheduler = BackgroundScheduler(daemon=True)
     _scheduler.add_job(
         sync_all_channels_job,
         IntervalTrigger(hours=6),
         id="sync_all_channels",
         replace_existing=True,
+    )
+    _scheduler.add_job(
+        competitor_sync_job,
+        IntervalTrigger(hours=24),
+        id=SYNC_JOB,
+        replace_existing=True,
+        **catch_up(SYNC_JOB, timedelta(hours=24)),
+    )
+    # Skips itself (recorded as "skipped") unless the owner switched auto-discovery on.
+    _scheduler.add_job(
+        competitor_discovery_job,
+        IntervalTrigger(weeks=1),
+        id=DISCOVERY_JOB,
+        replace_existing=True,
+        **catch_up(DISCOVERY_JOB, timedelta(days=7)),
     )
     _scheduler.add_job(
         cache_maintenance,

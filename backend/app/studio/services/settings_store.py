@@ -10,6 +10,24 @@ MAX_KEYWORDS = 20
 MAX_KEYWORD_LENGTH = 60
 
 
+AUTO_DISCOVERY_KEY = "auto_discovery"
+
+
+def get_auto_discovery(db: Session) -> bool:
+    row = db.get(StudioSetting, AUTO_DISCOVERY_KEY)
+    return bool(row.value) if row is not None else False
+
+
+def set_auto_discovery(db: Session, enabled: bool) -> bool:
+    row = db.get(StudioSetting, AUTO_DISCOVERY_KEY)
+    if row is None:
+        db.add(StudioSetting(key=AUTO_DISCOVERY_KEY, value=bool(enabled)))
+    else:
+        row.value = bool(enabled)
+    db.commit()
+    return bool(enabled)
+
+
 def get_keywords(db: Session) -> list[str]:
     row = db.get(StudioSetting, KEYWORDS_KEY)
     if row is None or not row.value:

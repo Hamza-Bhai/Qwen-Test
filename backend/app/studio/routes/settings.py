@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.studio.schemas import (
+    AutoDiscoveryPayload,
     KeywordsPayload,
     OwnChannelBrief,
     OwnChannelDetail,
@@ -20,7 +21,7 @@ from app.studio.services.own_channel import (
     set_own_channel,
 )
 from app.studio.services.serpapi import SerpApiClient
-from app.studio.services.settings_store import get_keywords, set_keywords
+from app.studio.services.settings_store import get_auto_discovery, get_keywords, set_auto_discovery, set_keywords
 
 router = APIRouter(prefix="/studio", tags=["studio"])
 
@@ -38,6 +39,7 @@ def studio_status(db: Session = Depends(get_db)) -> StudioStatus:
         ),
         keywords=get_keywords(db),
         own_channel=_brief(get_own_channel(db)),
+        auto_discovery=get_auto_discovery(db),
     )
 
 
@@ -55,6 +57,11 @@ def _own_channel_response(db: Session) -> OwnChannelResponse:
         else None,
         candidates=[OwnChannelBrief(id=c.id, title=c.title) for c in list_own_channel_candidates(db)],
     )
+
+
+@router.put("/auto-discovery", response_model=AutoDiscoveryPayload)
+def write_auto_discovery(payload: AutoDiscoveryPayload, db: Session = Depends(get_db)) -> AutoDiscoveryPayload:
+    return AutoDiscoveryPayload(enabled=set_auto_discovery(db, payload.enabled))
 
 
 @router.get("/own-channel", response_model=OwnChannelResponse)

@@ -33,6 +33,11 @@ class StudioStatus(BaseModel):
     serpapi: SerpApiStatus
     keywords: list[str]
     own_channel: OwnChannelBrief | None = None
+    auto_discovery: bool = False
+
+
+class AutoDiscoveryPayload(BaseModel):
+    enabled: bool
 
 
 class KeywordsPayload(BaseModel):
