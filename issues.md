@@ -23,7 +23,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 10 | P1 | Views/day is biased against older videos | ☐ |
 | 11 | P1 | Overview and Audit use different video sets | ✅ |
 | 12 | P2 | Duplicated "coverage" label in Health score UI | ✅ |
-| 13 | P2 | Subscriber count shown as exact (API rounds it) | ☐ |
+| 13 | P2 | Subscriber count shown as exact (API rounds it) | ✅ |
 | 14 | P2 | Uploads/month uses n/span instead of (n−1)/span | ☐ |
 | 15 | P2 | Quota day uses UTC; YouTube resets at Pacific midnight | ☐ |
 | 16 | P2 | Cached data reported with a fresh "last synced" time | ☐ |

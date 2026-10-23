@@ -151,8 +151,8 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
           <StatTile
             icon={<Users className="h-4 w-4" aria-hidden="true" />}
             label="Subscribers"
-            value={ch.subscriber_count === null ? "Private" : formatNumber(ch.subscriber_count)}
-            sub={ch.subscriber_count === null ? "Subscriber count hidden by owner" : undefined}
+            value={ch.subscriber_count === null ? "Private" : `≈ ${formatCompact(ch.subscriber_count)}`}
+            sub={ch.subscriber_count === null ? "Subscriber count hidden by owner" : "Rounded by YouTube (3 significant digits)"}
           />
           <StatTile
             icon={<PlaySquare className="h-4 w-4" aria-hidden="true" />}
@@ -254,7 +254,7 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
                       <tr key={h.id} className="border-b last:border-0">
                         <td className="whitespace-nowrap px-4 py-2">{formatDateTime(h.created_at)}</td>
                         <td className="px-4 py-2"><Badge variant="secondary">{h.trigger}</Badge></td>
-                        <td className="px-4 py-2 text-right tabular-nums">{formatNumber(h.subscriber_count)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{h.subscriber_count === null ? "—" : `≈ ${formatCompact(h.subscriber_count)}`}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{formatNumber(h.video_count)}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{formatNumber(h.view_count)}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{h.quota_units_used}</td>
