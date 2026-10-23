@@ -12,7 +12,7 @@ from app.services.quota import QuotaExceededError
 from app.services.youtube import YouTubeAPIError
 from app.studio.models import StudioCompetitor, StudioCompetitorVideo
 from app.studio.routes.errors import raise_http
-from app.studio.services import competitor_sync
+from app.studio.services import competitor_sync, insights
 from app.studio.services import competitors as svc
 
 router = APIRouter(prefix="/studio/competitors", tags=["studio"])
@@ -81,6 +81,21 @@ def add_competitor(payload: CompetitorCreate, db: Session = Depends(get_db)):
     except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:
         raise_http(exc)
     return _read(db, [comp])[0]
+
+
+@router.get("/insights")
+def competitor_insights(db: Session = Depends(get_db)):
+    return insights.build_insights(db)
+
+
+@router.get("/new-uploads")
+def competitor_new_uploads(db: Session = Depends(get_db)):
+    return insights.new_uploads(db)
+
+
+@router.post("/mark-seen")
+def competitor_mark_seen(db: Session = Depends(get_db)):
+    return {"marked": insights.mark_seen(db)}
 
 
 @router.patch("/{competitor_id}", response_model=CompetitorRead)
