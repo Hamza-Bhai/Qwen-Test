@@ -25,7 +25,7 @@ Formulas (all documented in FORMULAS below and exposed in the API response):
   like_to_view_ratio   = sum(likes where available) / sum(views of those same videos)
                          -> reported as "like/view ratio", NOT full engagement rate
   comment_to_view_ratio= sum(comments where available) / sum(views of those same videos)
-  uploads_per_month    = analyzed_video_count / months_spanned
+  uploads_per_month    = (analyzed_video_count - 1) / months_spanned
                          months_spanned = (last_pub - first_pub).days / 30.44, min 1
   days_since_last      = (now - most recent published_at).days
   outlier              |vpd| > median(vpd) + 3 * MAD-ish spread (robust z via IQR fence)
@@ -106,7 +106,7 @@ FORMULAS: dict[str, str] = {
     "total_views": "sum(view_count) over the analyzed video set",
     "like_to_view_ratio": "sum(like_count) / sum(view_count) restricted to videos that expose likes (NOT the full engagement rate)",
     "comment_to_view_ratio": "sum(comment_count) / sum(view_count) restricted to videos that expose comments",
-    "uploads_per_month": f"count(analyzed) / span_months; span_months = span_days / 30.44. Only reported when the observed span >= {MIN_OBSERVATION_SPAN_DAYS} days (cadence_reliable=true); shorter windows report the raw count + span instead of extrapolating a monthly rate.",
+    "uploads_per_month": f"(count(analyzed) - 1) / span_months, because n uploads span only n-1 publishing intervals; span_months = span_days / 30.44, measured from the first to the last analyzed upload. Only reported when the observed span >= {MIN_OBSERVATION_SPAN_DAYS} days (cadence_reliable=true); shorter windows report the raw count + span instead of extrapolating a monthly rate.",
     "days_since_last_upload": "floor((now_utc - max(published_at)) / 1 day)",
     "mature_video": f"a video with a known publish date at least {MIN_AGE_DAYS_FOR_RANKING} days old; only mature videos enter the baseline median, top/underperformer lists, outlier detection, distribution buckets and topic grouping",
     "fresh_video_provisional": f"published < {MIN_AGE_DAYS_FOR_RANKING} days ago (or undated): shown separately as provisional early traction, never ranked or compared against settled performance",
@@ -403,7 +403,8 @@ def compute_performance(videos: list[Video], cfg: AuditConfig, now: datetime) ->
         observed_span_days = max(round(_gap_days(pubs[0], pubs[-1])), 1)
         if observed_span_days >= MIN_OBSERVATION_SPAN_DAYS:
             months = observed_span_days / 30.44
-            uploads_per_month = len(pubs) / months
+            # n uploads between the first and last date make n-1 intervals.
+            uploads_per_month = (len(pubs) - 1) / months
             cadence_reliable = True
     elif len(pubs) == 1:
         uploads_per_month = None  # single upload: cadence unknowable

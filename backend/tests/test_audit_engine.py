@@ -155,7 +155,7 @@ class TestUploadCadence:
         # 12 uploads, one per week -> span exactly 77 days -> 12/(77/30.44)
         vids = [FakeVideo(views=100, days_ago=77 - i * 7) for i in range(12)]
         perf = compute_performance(vids, CFG, NOW)
-        assert perf.uploads_per_month == pytest.approx(12 / (77 / 30.44), rel=0.02)
+        assert perf.uploads_per_month == pytest.approx(11 / (77 / 30.44), rel=0.02)
 
     def test_single_upload_cadence_unknown(self):
         perf = compute_performance([FakeVideo()], CFG, NOW)
@@ -555,7 +555,7 @@ class TestUploadFrequencyInterpretation:
         vids = [FakeVideo(views=100, days_ago=77 - i * 7) for i in range(12)]
         perf = compute_performance(vids, CFG, NOW)
         assert perf.cadence_reliable is True
-        assert perf.uploads_per_month == pytest.approx(12 / (77 / 30.44), rel=0.02)
+        assert perf.uploads_per_month == pytest.approx(11 / (77 / 30.44), rel=0.02)
 
     def test_boundary_exactly_min_span_is_reliable(self):
         vids = [FakeVideo(vid="x", views=1, days_ago=30),
