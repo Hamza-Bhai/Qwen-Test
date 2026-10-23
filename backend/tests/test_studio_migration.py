@@ -29,7 +29,7 @@ def test_alembic_upgrade_head_creates_studio_setting(tmp_path):
     db_file = tmp_path / "mig.db"
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_file}"}
     result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "c9d1e2f3a4b5"],
         cwd=BACKEND_DIR,
         env=env,
         capture_output=True,
