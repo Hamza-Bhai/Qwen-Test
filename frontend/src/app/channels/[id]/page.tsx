@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { getChannelOverview } from "@/lib/api";
@@ -14,8 +15,10 @@ function parseId(raw: string | string[] | undefined): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export default function ChannelPage({ params }: { params: { id: string | string[] } }) {
-  // Next.js 14 App Router passes dynamic params synchronously.
+export default function ChannelPage() {
+  // useParams() works the same on every Next.js version; the `params` prop is a
+  // Promise from Next 15 on, which a client component would have to unwrap.
+  const params = useParams<{ id: string | string[] }>();
   const channelId = parseId(params?.id);
 
   const { data, isPending, isError, error } = useQuery({

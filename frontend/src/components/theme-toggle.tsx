@@ -1,7 +1,7 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
@@ -29,16 +29,29 @@ function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", dark);
 }
 
+const THEME_EVENT = "yt-growth-theme-change";
+
+function subscribe(onChange: () => void) {
+  // Another tab changed the theme: apply it here too, then re-read it.
+  const onStorage = () => {
+    applyTheme(readStoredTheme());
+    onChange();
+  };
+  window.addEventListener(THEME_EVENT, onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(THEME_EVENT, onChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
 /** Light / System / Dark switch. The choice is remembered in localStorage and
  *  applied before first paint by the inline script in the root layout. */
 export function ThemeToggle() {
-  // null until mounted: the server cannot know the saved theme, and rendering a
-  // guess would cause a hydration mismatch.
-  const [theme, setTheme] = useState<Theme | null>(null);
-
-  useEffect(() => {
-    setTheme(readStoredTheme());
-  }, []);
+  // The server cannot know the saved theme, so it renders null (nothing
+  // highlighted); the client reads the real value after hydration. This avoids
+  // a hydration mismatch without setting state inside an effect.
+  const theme = useSyncExternalStore<Theme | null>(subscribe, readStoredTheme, () => null);
 
   // While following the system, react to the OS switching themes live.
   useEffect(() => {
@@ -50,13 +63,13 @@ export function ThemeToggle() {
   }, [theme]);
 
   const choose = useCallback((next: Theme) => {
-    setTheme(next);
-    applyTheme(next);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
       // Not persisted, but the theme still applies for this visit.
     }
+    applyTheme(next);
+    window.dispatchEvent(new Event(THEME_EVENT));
   }, []);
 
   return (
