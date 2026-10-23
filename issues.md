@@ -20,7 +20,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 7 | P1 | Analysis limited to latest 50 videos | ✅ |
 | 8 | P1 | Shorts and long-form share one baseline | ✅ |
 | 9 | P1 | Health score does not measure views | ✅ |
-| 10 | P1 | Views/day is biased against older videos | ☐ |
+| 10 | P1 | Views/day is biased against older videos | 🟡 step 1 `5806e06` + snapshots stored |
 | 11 | P1 | Overview and Audit use different video sets | ✅ |
 | 12 | P2 | Duplicated "coverage" label in Health score UI | ✅ |
 | 13 | P2 | Subscriber count shown as exact (API rounds it) | ✅ |
@@ -28,6 +28,7 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 | 15 | P2 | Quota day uses UTC; YouTube resets at Pacific midnight | ✅ |
 | 16 | P2 | Cached data reported with a fresh "last synced" time | ✅ |
 | 17 | P2 | Dead `content_width` / `content_height` columns | ✅ |
+| 18 | P1 | Go-live checklist (hosting, Postgres, cron sync, secret token) | ☐ |
 
 ---
 
@@ -156,6 +157,8 @@ Work through these one at a time. Tick the box and note the commit when fixed.
   better than they are (acknowledged in [audit.py:746](backend/app/analytics/audit.py#L746), not handled).
 - **Fix:** store per-sync view snapshots (new table) → compare "views in first 7/30 days";
   short-term: only compare videos within similar age bands.
+- **Progress:** (1) done `5806e06`: videos are judged against same-format peers of similar age, unranked when data is too thin. (2a) done: every sync stores one `video_snapshots` row per video (no extra quota). (2b) todo, once enough snapshots exist: score by views gained in the first 7 days, falling back to the peer method for videos without that data; also move outliers and the recent-vs-history trend off views/day; add a retention rule for old snapshots.
+- **Caveat:** snapshots only accumulate while syncs run. Locally that is whenever the user syncs; live it comes from the scheduled sync (see #18).
 
 ## 11. [P1] Overview and Audit use different video sets
 
@@ -208,3 +211,9 @@ Work through these one at a time. Tick the box and note the commit when fixed.
 2. Analysis window (#7): rolling 90 days, max 500 videos with pagination. If the
    cap is hit, clearly disclose the actual date coverage.
 3. Shorts fix committed separately first.
+
+## 18. [P1] Go-live checklist
+
+- **Why:** the app is local-only today (SQLite, in-process scheduler, no auth).
+- **Plan discussed:** frontend on Vercel; backend on an always-on host (GitHub Actions cannot serve an API); PostgreSQL instead of SQLite; sync triggered by cron-job.org or a scheduled GitHub Action calling a token-protected endpoint.
+- **To do:** pick backend host + Postgres; add secret-token auth on the sync endpoint (part of #3); set `ENABLE_SCHEDULER=false` when an external cron drives syncs (avoid double quota use); remember that init_db() `create_all` can pre-create tables and clash with migrations, so run `alembic upgrade head` on deploy and consider dropping create_all in production.

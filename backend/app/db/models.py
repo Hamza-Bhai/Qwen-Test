@@ -112,8 +112,33 @@ class Video(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")
+    snapshots: Mapped[list["VideoSnapshot"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("ix_videos_channel_published", "channel_id", "published_at"),)
+
+
+class VideoSnapshot(Base):
+    """Public stats of one video as observed during one sync.
+
+    ``videos`` only keeps the latest numbers. Snapshots keep the history, so
+    views gained in a video's first days can be measured later instead of
+    guessed from lifetime views / age.
+    """
+
+    __tablename__ = "video_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int | None] = mapped_column(Integer)
+    comment_count: Mapped[int | None] = mapped_column(Integer)
+
+    video: Mapped["Video"] = relationship(back_populates="snapshots")
+
+    __table_args__ = (Index("ix_video_snapshots_video_captured", "video_id", "captured_at"),)
 
 
 def analyzable_video_filter():

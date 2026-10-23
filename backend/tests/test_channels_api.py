@@ -452,3 +452,40 @@ class TestRemovedVideos:
             db.close()
         client.post(f"/api/v1/channels/{cid}/sync")
         assert self._removed_at("AAAAAAAAAA1") is None
+
+
+class TestVideoSnapshots:
+    """Issue #10 (step 2a): every sync records one stats snapshot per video."""
+
+    @staticmethod
+    def _snapshots(yt_id):
+        from sqlalchemy import select
+        from app.db.models import Video, VideoSnapshot
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            return db.execute(
+                select(VideoSnapshot.view_count, VideoSnapshot.captured_at)
+                .join(Video, Video.id == VideoSnapshot.video_id)
+                .where(Video.youtube_video_id == yt_id)
+                .order_by(VideoSnapshot.captured_at)
+            ).all()
+        finally:
+            db.close()
+
+    def test_each_sync_adds_a_snapshot_with_the_synced_views(self, client, monkeypatch):
+        make_fake_get(monkeypatch)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        client.post(f"/api/v1/channels/{cid}/sync")
+        assert [s.view_count for s in self._snapshots("AAAAAAAAAA1")] == [1234567]
+        client.post(f"/api/v1/channels/{cid}/sync")
+        snaps = self._snapshots("AAAAAAAAAA1")
+        assert len(snaps) == 2 and snaps[0].captured_at <= snaps[1].captured_at
+
+    def test_deleting_a_channel_removes_its_snapshots(self, client, monkeypatch):
+        make_fake_get(monkeypatch)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        client.post(f"/api/v1/channels/{cid}/sync")
+        assert client.delete(f"/api/v1/channels/{cid}").status_code == 204
+        assert self._snapshots("AAAAAAAAAA1") == []

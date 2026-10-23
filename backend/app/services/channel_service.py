@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Channel, ChannelAnalysis, Video
+from app.db.models import Channel, ChannelAnalysis, Video, VideoSnapshot
 from app.services.cache import ResponseCache
 from app.services.quota import QuotaTracker
 from app.services.url_resolver import parse_channel_reference
@@ -145,6 +145,13 @@ def sync_channel(db: Session, channel: Channel) -> dict:
             video.comment_count = vf["comment_count"]
             video.last_synced_at = _utcnow()
             video.removed_at = None  # a video that reappears is live again
+            # One history point per sync (no extra API quota: the stats were
+            # already fetched). Later used to measure early-days views.
+            db.add(VideoSnapshot(
+                video=video, captured_at=video.last_synced_at,
+                view_count=video.view_count, like_count=video.like_count,
+                comment_count=video.comment_count,
+            ))
             synced.append(video)
             upserted += 1
         _resolve_shorts(synced)
