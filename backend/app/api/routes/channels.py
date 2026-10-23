@@ -156,11 +156,17 @@ def get_channel(channel_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{channel_id}", status_code=204)
-def delete_channel(channel_id: int, db: Session = Depends(get_db)):
+def delete_channel(channel_id: int, keep_data: bool = False, db: Session = Depends(get_db)):
+    """Remove a channel. By default everything is deleted for good; with
+    ``keep_data=true`` the channel is only hidden and adding it again brings
+    its saved videos and history back."""
     channel = channel_service.get_channel_by_pk(db, channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
-    channel_service.delete_channel(db, channel)
+    if keep_data:
+        channel_service.archive_channel(db, channel)
+    else:
+        channel_service.delete_channel(db, channel)
 
 
 @router.get("/{channel_id}/videos", response_model=list[VideoRead])

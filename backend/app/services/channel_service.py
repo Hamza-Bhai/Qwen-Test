@@ -73,6 +73,7 @@ def add_channel(db: Session, identifier: str) -> Channel:
     channel.view_count = fields["view_count"]
     channel.channel_created_at = _parse_dt(fields["channel_created_at"])
     channel.last_synced_at = _utcnow()
+    channel.archived_at = None  # re-adding a removed channel restores its saved data
 
     db.commit()
     db.refresh(channel)
@@ -200,12 +201,16 @@ def _mark_removed_videos(db: Session, channel: Channel, synced: list[Video]) -> 
 
 def list_channels(db: Session) -> list[Channel]:
     return list(
-        db.execute(select(Channel).order_by(Channel.created_at.desc())).scalars().all()
+        db.execute(
+            select(Channel).where(Channel.archived_at.is_(None)).order_by(Channel.created_at.desc())
+        ).scalars().all()
     )
 
 
 def get_channel_by_pk(db: Session, channel_pk: int) -> Channel | None:
-    return db.get(Channel, channel_pk)
+    """The channel, or None when missing or archived (removed with data kept)."""
+    channel = db.get(Channel, channel_pk)
+    return None if channel is None or channel.archived_at is not None else channel
 
 
 def list_videos(db: Session, channel_pk: int, *, limit: int = 100) -> list[Video]:
@@ -222,7 +227,14 @@ def list_videos(db: Session, channel_pk: int, *, limit: int = 100) -> list[Video
 
 
 def delete_channel(db: Session, channel: Channel) -> None:
+    """Permanently delete the channel with all its videos, snapshots and history."""
     db.delete(channel)
+    db.commit()
+
+
+def archive_channel(db: Session, channel: Channel) -> None:
+    """Hide the channel but keep all its data; adding it again restores it."""
+    channel.archived_at = _utcnow()
     db.commit()
 
 

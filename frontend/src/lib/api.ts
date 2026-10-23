@@ -106,9 +106,11 @@ export function syncChannel(id: number): Promise<SyncResult> {
   return request<SyncResult>(`/channels/${id}/sync`, { method: "POST" });
 }
 
-/** DELETE /api/v1/channels/{id} */
-export function deleteChannel(id: number): Promise<void> {
-  return request<void>(`/channels/${id}`, { method: "DELETE" });
+/** DELETE /api/v1/channels/{id} — permanent. With keepData the channel is only
+ *  hidden; adding it again restores its saved videos and history. */
+export function deleteChannel(id: number, options: { keepData?: boolean } = {}): Promise<void> {
+  const query = options.keepData ? "?keep_data=true" : "";
+  return request<void>(`/channels/${id}${query}`, { method: "DELETE" });
 }
 
 /** GET /api/v1/channels/{id}/audit — Phase-2 rule-based audit. Read-only, zero quota. */

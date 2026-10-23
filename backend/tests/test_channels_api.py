@@ -489,3 +489,40 @@ class TestVideoSnapshots:
         client.post(f"/api/v1/channels/{cid}/sync")
         assert client.delete(f"/api/v1/channels/{cid}").status_code == 204
         assert self._snapshots("AAAAAAAAAA1") == []
+
+
+class TestKeepDataOnRemove:
+    """Removing a channel can keep its data: it is hidden, and adding the same
+    channel again restores its videos and history (no loss)."""
+
+    def _synced_channel(self, client, monkeypatch):
+        make_fake_get(monkeypatch)
+        cid = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()["id"]
+        client.post(f"/api/v1/channels/{cid}/sync")
+        return cid
+
+    def test_keep_data_hides_channel_then_re_adding_restores_it(self, client, monkeypatch):
+        cid = self._synced_channel(client, monkeypatch)
+        assert client.delete(f"/api/v1/channels/{cid}?keep_data=true").status_code == 204
+        assert client.get("/api/v1/channels").json() == []
+        assert client.get(f"/api/v1/channels/{cid}").status_code == 404
+
+        again = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()
+        assert again["id"] == cid  # same row, not a new channel
+        ov = client.get(f"/api/v1/channels/{cid}/overview").json()
+        assert ov["summary"]["videos_analyzed"] == 1
+        assert [h["trigger"] for h in ov["history"]] == ["sync"]  # history kept
+        assert [c["id"] for c in client.get("/api/v1/channels").json()] == [cid]
+
+    def test_plain_delete_still_removes_everything(self, client, monkeypatch):
+        cid = self._synced_channel(client, monkeypatch)
+        assert client.delete(f"/api/v1/channels/{cid}").status_code == 204
+        again = client.post("/api/v1/channels", json={"identifier": "@mkbhd"}).json()
+        ov = client.get(f"/api/v1/channels/{again['id']}/overview").json()
+        assert ov["summary"]["videos_analyzed"] == 0 and ov["history"] == []
+
+    def test_archived_channel_is_not_synced_by_the_scheduled_job(self, client, monkeypatch):
+        cid = self._synced_channel(client, monkeypatch)
+        client.delete(f"/api/v1/channels/{cid}?keep_data=true")
+        from app.jobs.sync_jobs import sync_all_channels_job
+        assert sync_all_channels_job()["results"] == []

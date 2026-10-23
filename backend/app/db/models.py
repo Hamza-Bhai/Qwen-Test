@@ -68,6 +68,10 @@ class Channel(Base):
     view_count: Mapped[int | None] = mapped_column(Integer)
     channel_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the user removes the channel but chooses to keep its data. An
+    # archived channel is hidden and not synced; adding it again clears this
+    # and brings back its videos, snapshots and history.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     owner: Mapped["User | None"] = relationship(back_populates="channels")
