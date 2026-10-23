@@ -7,6 +7,7 @@ exposed to or requested by the frontend (architecture rule #7).
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +33,13 @@ class Settings(BaseSettings):
     youtube_api_key: str | None = None  # env: YOUTUBE_API_KEY
     youtube_quota_daily_limit: int = 10_000
 
+    # --- SerpApi (Growth Studio discovery, trends, transcripts) ----------------------
+    # The owner's env name is SERPAPIKEY; a blank value counts as "not configured".
+    serpapi_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("SERPAPIKEY", "SERPAPI_API_KEY")
+    )
+    serpapi_monthly_cap: int = 200  # hard stop below the free plan's 250 searches/month
+
     # --- Cache / quota policy ------------------------------------------------------
     cache_ttl_seconds: int = 900  # default TTL for cached API responses
 
@@ -42,6 +50,11 @@ class Settings(BaseSettings):
 
     # --- Scheduler -------------------------------------------------------------------
     enable_scheduler: bool = True  # in-process APScheduler (Phase 1)
+
+    @field_validator("serpapi_key")
+    @classmethod
+    def _blank_key_is_none(cls, v: str | None) -> str | None:
+        return v.strip() or None if v else None
 
 
 @lru_cache
