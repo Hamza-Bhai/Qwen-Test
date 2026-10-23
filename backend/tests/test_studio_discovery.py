@@ -341,6 +341,45 @@ def test_discover_skips_a_query_with_no_results_and_continues(db, monkeypatch):
     assert result.stopped_reason is None and result.message is None and result.added == 1
 
 
+def test_discover_same_channel_as_handle_and_channel_id_is_one_candidate(db, monkeypatch):
+    api = scenario(db, monkeypatch)
+    api.channel(1, subs=5000, handle="@alpha")
+    api.uploads(1, 2500)
+    set_keywords(db, ["calm", "focus"])
+    http = RoutingHttp(search={
+        "calm": search_payload(("One", uc(1), None)),                                  # found by channel id
+        "focus": search_payload(("One", None, "https://www.youtube.com/@Alpha")),      # found by handle only
+    })
+    run(db, http)
+    row = db.query(StudioCompetitor).one()
+    assert row.youtube_channel_id == uc(1) and row.discovery_reason["appearances"] == 2
+    assert set(row.discovery_reason["seeds"]) == {"calm", "focus"}
+
+
+def test_discover_youtube_quota_exhausted_mid_run_returns_partial_with_reason(db, monkeypatch):
+    from app.services.quota import QuotaExceededError
+
+    api = scenario(db, monkeypatch)
+    for n in (1, 2):
+        api.channel(n, subs=5000)
+        api.uploads(n, 2500)
+    set_keywords(db, ["calm"])
+    youtube = get_service(db)
+    real = youtube.playlist_items
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise QuotaExceededError("YouTube daily quota exhausted")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(youtube, "playlist_items", flaky)
+    http = RoutingHttp(search={"calm": search_payload(("1", uc(1), None), ("2", uc(2), None))})
+    result = run(db, http, youtube=youtube)
+    assert result.stopped_reason == "youtube_quota" and result.added == 1
+
+
 def test_discover_without_own_channel_raises(db):
     with pytest.raises(ValueError, match="Pick your channel"):
         run(db, RoutingHttp())
