@@ -306,6 +306,41 @@ def test_discover_budget_exhausted_returns_partial_with_reason(db, monkeypatch):
     assert result.stopped_reason == "budget" and result.searches_used == 1 and result.added == 1
 
 
+def test_discover_reports_a_serpapi_failure_instead_of_returning_nothing_silently(db, monkeypatch):
+    scenario(db, monkeypatch)
+    set_keywords(db, ["calm", "focus"])
+
+    class Down:
+        calls = 0
+
+        def get(self, url, params=None, timeout=None):
+            Down.calls += 1
+            raise httpx.ConnectError("dns failure")
+
+    result = run(db, Down())
+    assert result.stopped_reason == "serpapi_error" and "Cannot reach SerpApi" in result.message
+    assert result.added == 0 and Down.calls == 1  # it stopped instead of hammering the other searches
+
+
+def test_discover_skips_a_query_with_no_results_and_continues(db, monkeypatch):
+    api = scenario(db, monkeypatch)
+    api.channel(1, subs=5000)
+    api.uploads(1, 2500)
+    set_keywords(db, ["nothing here", "calm"])
+
+    class Mixed(RoutingHttp):
+        def get(self, url, params=None, timeout=None):
+            if params.get("search_query") == "nothing here":
+                self.calls.append(dict(params))
+                return type("R", (), {"status_code": 200,
+                                      "json": lambda s: {"error": "YouTube hasn't returned any results for this query."}})()
+            return super().get(url, params=params, timeout=timeout)
+
+    http = Mixed(search={"calm": search_payload(("1", uc(1), None))})
+    result = run(db, http)
+    assert result.stopped_reason is None and result.message is None and result.added == 1
+
+
 def test_discover_without_own_channel_raises(db):
     with pytest.raises(ValueError, match="Pick your channel"):
         run(db, RoutingHttp())

@@ -23,6 +23,8 @@ import { COMPETITORS_KEY } from "@/components/studio/competitors/watchlist-tab";
 function discoveryMessage(result: DiscoveryResult): string {
   const base = `Added ${result.added} candidate${result.added === 1 ? "" : "s"} using ${result.searches_used} SerpApi search${result.searches_used === 1 ? "" : "es"}.`;
   if (result.stopped_reason === "budget") return `${base} Stopped early: the monthly SerpApi cap was reached.`;
+  if (result.stopped_reason === "serpapi_error")
+    return `${base} Stopped early because SerpApi failed: ${result.message ?? "unknown error"}`;
   if (result.stopped_reason === "youtube_quota") return `${base} Stopped early: today's YouTube quota ran out.`;
   if (result.added === 0) return `${base} Nothing new matched your size and recency filters.`;
   return base;

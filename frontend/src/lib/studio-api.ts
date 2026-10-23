@@ -162,7 +162,8 @@ export interface DiscoveryResult {
   added: number;
   considered: number;
   searches_used: number;
-  stopped_reason: "budget" | "youtube_quota" | null;
+  stopped_reason: "budget" | "youtube_quota" | "serpapi_error" | null;
+  message: string | null;
   competitor_ids: number[];
 }
 

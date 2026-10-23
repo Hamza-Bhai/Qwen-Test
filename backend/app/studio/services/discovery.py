@@ -26,6 +26,7 @@ from app.studio.services.settings_store import get_keywords
 logger = logging.getLogger(__name__)
 
 _CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
+_NO_RESULTS = re.compile(r"hasn'?t returned any results", re.IGNORECASE)
 
 MAX_KEYWORD_SEARCHES = 5
 MAX_RELATED_LOOKUPS = 3
@@ -50,7 +51,8 @@ class DiscoveryResult:
     added: int = 0
     considered: int = 0
     searches_used: int = 0
-    stopped_reason: str | None = None  # "budget" | "youtube_quota"
+    stopped_reason: str | None = None  # "budget" | "youtube_quota" | "serpapi_error"
+    message: str | None = None  # human-readable detail for "serpapi_error"
     competitor_ids: list[int] = field(default_factory=list)
 
 
@@ -207,9 +209,14 @@ def discover(
             return None
         except SerpApiNotConfigured:
             raise
-        except SerpApiError as exc:  # e.g. a query with no results: skip it, keep going
-            logger.info("SerpApi search skipped (%s): %s", engine, exc)
-            return {}
+        except SerpApiError as exc:
+            if _NO_RESULTS.search(str(exc)):  # a query with no results is normal: skip it
+                logger.info("SerpApi search had no results (%s): %s", engine, exc)
+                return {}
+            # Network/auth/server problems must be visible, not an empty "success".
+            result.stopped_reason = "serpapi_error"
+            result.message = str(exc)
+            return None
 
     for keyword in get_keywords(db)[:MAX_KEYWORD_SEARCHES]:
         if attempts >= max_searches or result.stopped_reason:
