@@ -11,9 +11,11 @@ from app.db.session import get_db
 from app.services.quota import QuotaExceededError
 from app.services.youtube import YouTubeAPIError
 from app.studio.models import StudioCompetitor, StudioCompetitorVideo
+from app.studio.routes.deps import get_serpapi
 from app.studio.routes.errors import raise_http
-from app.studio.services import competitor_sync, insights
+from app.studio.services import competitor_sync, hooks, insights
 from app.studio.services import competitors as svc
+from app.studio.services.serpapi import SerpApiClient, SerpApiError
 
 router = APIRouter(prefix="/studio/competitors", tags=["studio"])
 
@@ -131,4 +133,22 @@ def sync_one(competitor_id: int, db: Session = Depends(get_db)):
         return competitor_sync.sync_competitor(db, comp)
     except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:
         raise_http(exc)
+
+
+@router.post("/videos/{youtube_video_id}/hook")
+def study_video_hook(youtube_video_id: str, db: Session = Depends(get_db), serp: SerpApiClient = Depends(get_serpapi)):
+    try:
+        return hooks.study_hook(db, serp, youtube_video_id)
+    except (hooks.UnknownVideo, hooks.NoTranscript) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except (SerpApiError, ValueError) as exc:
+        raise_http(exc)
+
+
+@router.get("/videos/{youtube_video_id}/hook")
+def read_video_hook(youtube_video_id: str, db: Session = Depends(get_db)):
+    stored = hooks.stored_hook(db, youtube_video_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="No hook stored for this video yet")
+    return stored
 
