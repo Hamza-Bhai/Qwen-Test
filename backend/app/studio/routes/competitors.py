@@ -12,6 +12,7 @@ from app.services.quota import QuotaExceededError
 from app.services.youtube import YouTubeAPIError
 from app.studio.models import StudioCompetitor, StudioCompetitorVideo
 from app.studio.routes.errors import raise_http
+from app.studio.services import competitor_sync
 from app.studio.services import competitors as svc
 
 router = APIRouter(prefix="/studio/competitors", tags=["studio"])
@@ -99,3 +100,20 @@ def patch_competitor(competitor_id: int, payload: CompetitorPatch, db: Session =
 def delete_competitor(competitor_id: int, db: Session = Depends(get_db)):
     _get_or_404(db, competitor_id)
     svc.remove_competitor(db, competitor_id)
+
+
+@router.post("/sync")
+def sync_all(db: Session = Depends(get_db)):
+    return {"results": competitor_sync.sync_all_watching(db)}
+
+
+@router.post("/{competitor_id}/sync")
+def sync_one(competitor_id: int, db: Session = Depends(get_db)):
+    comp = _get_or_404(db, competitor_id)
+    if comp.status != "watching":
+        raise HTTPException(status_code=409, detail="Only competitors on the watchlist can be synced.")
+    try:
+        return competitor_sync.sync_competitor(db, comp)
+    except (YouTubeAPIError, QuotaExceededError, ValueError) as exc:
+        raise_http(exc)
+
