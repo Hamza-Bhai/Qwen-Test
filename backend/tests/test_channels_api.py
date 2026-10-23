@@ -356,3 +356,15 @@ class TestFetchRecentVideosPagination:
         assert len(items) == 120
         assert page_calls == [0, 1, 2]
         assert batch_sizes == [50, 50, 20]
+
+
+class TestQuotaDay:
+    """Issue #15: the quota day follows Pacific time, where YouTube resets it."""
+
+    def test_quota_day_is_pacific(self):
+        from datetime import datetime
+        from app.services.quota import QUOTA_TIMEZONE, QuotaTracker
+
+        expected = datetime.now(QUOTA_TIMEZONE).date()
+        assert QuotaTracker(db=None).today == expected
+        assert QUOTA_TIMEZONE.key == "America/Los_Angeles"
