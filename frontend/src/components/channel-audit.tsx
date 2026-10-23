@@ -366,9 +366,17 @@ function VideoRow({ video, baselineLabel }: { video: AuditVideoRanking; baseline
           </span>
         </p>
         <p className="mt-0.5 text-xs tabular-nums">
-          {formatCompact(video.view_count)} views · {formatDecimal(video.views_per_day)} views/day ·{" "}
-          <span className={pct !== null && pct < 0 ? "text-red-600" : "text-emerald-600"}>
+          {formatCompact(video.view_count)} views · {formatDecimal(video.views_per_day)} views/day avg ·{" "}
+          <span
+            className={pct !== null && pct < 0 ? "text-red-600" : "text-emerald-600"}
+            title={
+              video.peer_count > 0
+                ? `Compared with the median views of ${video.peer_count} same-format videos of similar age.`
+                : undefined
+            }
+          >
             {formatPct(pct)} {baselineLabel}
+            {video.peer_count > 0 ? ` (${video.peer_count} peers)` : ""}
           </span>
         </p>
       </div>
@@ -851,15 +859,15 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           title="Top performers"
           icon={<TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
           videos={audit.top_performers}
-          emptyText="No ranked videos yet."
-          baselineLabel="vs own-format median views/day"
+          emptyText="Not enough similar-age videos with enough views to rank fairly yet."
+          baselineLabel="vs similar-age videos of the same format"
         />
         <RankingCard
           title="Underperformers"
           icon={<TrendingDown className="h-4 w-4 text-red-600" aria-hidden="true" />}
           videos={audit.underperformers}
-          emptyText="No videos fall clearly below the baseline."
-          baselineLabel="vs own-format median views/day"
+          emptyText="No video falls clearly below its similar-age peers (or there is not enough data to tell)."
+          baselineLabel="vs similar-age videos of the same format"
         />
       </div>
 
@@ -869,7 +877,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           icon={<AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />}
           videos={audit.outliers}
           emptyText=""
-          baselineLabel="vs own-format median views/day"
+          baselineLabel="vs similar-age videos of the same format"
         />
       )}
 

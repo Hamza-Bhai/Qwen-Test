@@ -82,7 +82,11 @@ export interface AuditVideoRanking {
   duration_seconds: number | null;
   age_days: number;
   views_per_day: number;
+  /** Views vs the median of same-format videos of similar age; null = not judged. */
   vs_baseline_pct: number | null;
+  /** How many same-format, similar-age videos it was compared with. */
+  peer_count: number;
+  peer_median_views: number | null;
   // Backend emits "estimated-shorts" | "estimated-longform" | "unknown".
   // Legacy persisted audits may still contain "shorts" | "long".
   form: string;

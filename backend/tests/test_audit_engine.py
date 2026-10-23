@@ -132,7 +132,8 @@ class TestAgeNormalization:
         by_id = {r.youtube_video_id: r for r in rows}
         assert by_id["new"].views_per_day == 1000.0
         assert by_id["old"].views_per_day == 100.0
-        assert by_id["new"].vs_baseline_pct > 0 > by_id["old"].vs_baseline_pct
+        # No same-age peers exist, so neither video is judged (see TestPeerBaseline).
+        assert by_id["new"].vs_baseline_pct is None and by_id["old"].vs_baseline_pct is None
 
     def test_age_floor_one_day_for_today_uploads(self):
         fresh = FakeVideo(vid="fresh", views=500, days_ago=0)
@@ -1038,3 +1039,52 @@ class TestOverviewMatchesAudit:
         summary = summarize_channel(FakeDB(vids), channel, NOW)
         assert summary.videos_analyzed == audit.performance.videos_analyzed == 90
         assert summary.total_views == 90 * 100
+
+
+class TestPeerBaseline:
+    """Issue #10 (step 1): videos are judged against same-format videos of
+    similar age, using raw views, so older uploads are not penalised."""
+
+    @staticmethod
+    def _shorts(prefix, n, views, days_ago):
+        return [FakeVideo(vid=f"{prefix}{i}", views=views, days_ago=days_ago + (i % 3), duration=30)
+                for i in range(n)]
+
+    def test_old_and_new_videos_judged_on_equal_footing(self):
+        old = self._shorts("o", 8, 1_000, 45) + [FakeVideo(vid="old_hit", views=2_000, days_ago=45, duration=30)]
+        new = self._shorts("n", 8, 100, 9) + [FakeVideo(vid="new_hit", views=200, days_ago=9, duration=30)]
+        rows, _ = rank_videos(old + new, CFG, NOW)
+        by_id = {r.youtube_video_id: r for r in rows}
+        # Both doubled their own age group's median -> same +100%, whatever the age.
+        assert by_id["old_hit"].vs_baseline_pct == pytest.approx(100.0)
+        assert by_id["new_hit"].vs_baseline_pct == pytest.approx(100.0)
+        assert by_id["old_hit"].peer_count >= 5
+
+    def test_too_few_peers_means_not_judged(self):
+        vids = self._shorts("a", 4, 1_000, 30)  # each has only 3 peers
+        rows, _ = rank_videos(vids, CFG, NOW)
+        assert all(r.vs_baseline_pct is None for r in rows)
+        assert all(r.peer_count == 3 for r in rows)
+
+    def test_low_view_counts_are_noise_not_underperformance(self):
+        # Peers sit at ~8 views: -50% of 8 views is meaningless.
+        vids = self._shorts("t", 10, 8, 30) + [FakeVideo(vid="tiny", views=2, days_ago=30, duration=30)]
+        audit = _run_audit_on(vids)
+        assert audit.underperformers == [] and audit.top_performers == []
+        assert any("not ranked" in n for n in audit.notes)
+
+    def test_lists_are_ordered_by_peer_comparison(self):
+        base = self._shorts("b", 10, 1_000, 30)
+        hits = [FakeVideo(vid="big", views=3_000, days_ago=30, duration=30),
+                FakeVideo(vid="mid", views=1_500, days_ago=30, duration=30)]
+        flops = [FakeVideo(vid="bad", views=100, days_ago=30, duration=30),
+                 FakeVideo(vid="meh", views=400, days_ago=30, duration=30)]
+        audit = _run_audit_on(base + hits + flops)
+        assert [r.youtube_video_id for r in audit.top_performers[:2]] == ["big", "mid"]
+        assert [r.youtube_video_id for r in audit.underperformers[:2]] == ["bad", "meh"]
+
+    def test_other_format_is_never_a_peer(self):
+        shorts = self._shorts("s", 8, 100, 30)
+        longs = [FakeVideo(vid=f"L{i}", views=50_000, days_ago=30, duration=900) for i in range(8)]
+        rows, _ = rank_videos(shorts + longs, CFG, NOW)
+        assert all(r.vs_baseline_pct == 0 for r in rows)

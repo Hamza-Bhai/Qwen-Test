@@ -68,6 +68,11 @@ TOPIC_MIN_DIFF_PCT = 20.0           # keyword must beat/trail the baseline by
 FORMAT_BASELINE_MIN_VIDEOS = 3      # mature videos a format needs for its own
                                     # baseline; fewer => its videos are not judged
                                     # >= 20% to be listed as strong/weak
+PEER_AGE_TOLERANCE = 0.30           # a video's peers are same-format videos whose age
+PEER_AGE_MIN_TOLERANCE_DAYS = 5     # is within +-30% (at least +-5 days) of its own
+PEER_MIN_COUNT = 5                  # needs >= 5 peers, else it is not judged
+PEER_MIN_MEDIAN_VIEWS = 20          # peers' median views below this = pure noise
+                                    # (6 vs 8 views): the video is not judged
 MIN_AGE_DAYS_FOR_RANKING = 7        # videos younger than this have provisional
                                     # traction only (excluded from top/under/outliers)
 MIN_OBSERVATION_SPAN_DAYS = 30      # below this span, monthly cadence is not a
@@ -110,9 +115,10 @@ FORMULAS: dict[str, str] = {
     "days_since_last_upload": "floor((now_utc - max(published_at)) / 1 day)",
     "mature_video": f"a video with a known publish date at least {MIN_AGE_DAYS_FOR_RANKING} days old; only mature videos enter the baseline median, top/underperformer lists, outlier detection, distribution buckets and topic grouping",
     "fresh_video_provisional": f"published < {MIN_AGE_DAYS_FOR_RANKING} days ago (or undated): shown separately as provisional early traction, never ranked or compared against settled performance",
-    "top_performers": "mature videos ranked by views_per_day, top 10 (fresh uploads excluded — their floored age exaggerates vpd)",
+    "peer_baseline": f"median view_count of the video's PEERS: other mature videos of the same format whose age is within +-{PEER_AGE_TOLERANCE:.0%} (at least +-{PEER_AGE_MIN_TOLERANCE_DAYS} days) of its own. Needs >= {PEER_MIN_COUNT} peers with a median of >= {PEER_MIN_MEDIAN_VIEWS} views, otherwise the video is not judged. vs_baseline_pct = views / peer median - 1",
+    "top_performers": "judged mature videos with the highest views vs their peer baseline (above 0%), top 10; views/day is shown for reference only",
     "format_baseline": f"median views/day of MATURE videos of the same format (Shorts vs long-form); a format needs >= {FORMAT_BASELINE_MIN_VIDEOS} mature videos, otherwise its videos get no baseline and are not judged",
-    "underperformers": f"mature videos at least {MIN_AGE_DAYS_FOR_RANKING} days old whose views/day is >40% below their own format's baseline",
+    "underperformers": f"judged mature videos (at least {MIN_AGE_DAYS_FOR_RANKING} days old) whose views are >40% below their peer baseline (same format, similar age), worst first",
     "outlier": "views_per_day beyond Q3 + 3*IQR computed per format over MATURE videos only (robust Tukey fence; requires >= 8 mature videos of that format; no assumption of normality)",
     "top5_share_of_views": f"sum(views of top-5 MATURE videos by view_count) / total views of MATURE videos; needs >= 10 videos at least {MIN_AGE_DAYS_FOR_RANKING} days old",
     "short_form": ("is_short from the youtube.com/shorts/<id> check (200 => Short, redirect to /watch => regular video); videos longer than " + str(SHORT_MAX_SECONDS) + "s are never Shorts; unchecked videos fall back to duration_seconds <= " + str(SHORT_MAX_SECONDS) + "s"),
@@ -190,11 +196,14 @@ class VideoRanking:
     duration_seconds: int | None
     age_days: int
     views_per_day: float
-    vs_baseline_pct: float | None  # relative to channel median vpd
+    vs_baseline_pct: float | None  # views vs the median of same-format peers of
+                                   # similar age; None = not enough peers to judge
     form: str                      # "estimated-shorts" | "estimated-longform" | "unknown"
     last_synced_at: datetime | None = None  # when stats were observed (freshness)
     mature: bool = True            # age >= MIN_AGE_DAYS_FOR_RANKING; fresh videos
                                    # have provisional traction only, never ranked
+    peer_count: int = 0                     # same-format videos of similar age used
+    peer_median_views: float | None = None  # ...and their median views
 
 
 @dataclass
@@ -550,11 +559,31 @@ def rank_videos(videos: list[Video], cfg: AuditConfig, now: datetime) -> tuple[l
     # differ by orders of magnitude, so one mixed median would brand a whole
     # format as under- or over-performing.
     by_format = format_baselines(rows)
-    for r in rows:
-        fb = by_format.get(r.form)
-        if fb and fb > 0:
-            r.vs_baseline_pct = round((r.views_per_day / fb - 1.0) * 100.0, 1)
+    _apply_peer_baselines(rows, by_format)
     return rows, base
+
+
+def _apply_peer_baselines(rows: list[VideoRanking], by_format: dict[str, float]) -> None:
+    """Judge each mature video against same-format videos of SIMILAR AGE.
+
+    Views/day = lifetime views / age penalises old videos (most views arrive in
+    the first days). Comparing raw views between videos of similar age needs no
+    age division, so old and new uploads get an equal footing. A video is left
+    unjudged (vs_baseline_pct None) when it has too few peers or its peers' views
+    are too low for a difference to mean anything.
+    """
+    mature = [r for r in rows if r.mature and r.form in by_format]
+    for r in mature:
+        tol = max(PEER_AGE_MIN_TOLERANCE_DAYS, PEER_AGE_TOLERANCE * r.age_days)
+        peers = [p.view_count for p in mature
+                 if p is not r and p.form == r.form and abs(p.age_days - r.age_days) <= tol]
+        r.peer_count = len(peers)
+        if len(peers) < PEER_MIN_COUNT:
+            continue
+        peer_median = median(peers)
+        r.peer_median_views = float(peer_median)
+        if peer_median >= PEER_MIN_MEDIAN_VIEWS:
+            r.vs_baseline_pct = round((r.view_count / peer_median - 1.0) * 100.0, 1)
 
 
 def format_baselines(rows: list[VideoRanking]) -> dict[str, float]:
@@ -1293,6 +1322,13 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
     # misleading. Fresh uploads stay visible in fresh_videos_provisional instead.
     mature_desc = [r for r in ranked_desc if r.mature]
     fresh_rows = [r for r in ranked_desc if not r.mature]
+    judged = [r for r in mature_desc if r.vs_baseline_pct is not None]
+    if mature_desc and len(judged) < len(mature_desc):
+        notes.append(
+            f"{len(mature_desc) - len(judged)} of {len(mature_desc)} settled videos were not ranked: each "
+            f"needs >= {PEER_MIN_COUNT} same-format videos of similar age to compare with, and those "
+            f"peers need a median of >= {PEER_MIN_MEDIAN_VIEWS} views (below that, differences are noise)."
+        )
     if fresh_rows:
         notes.append(
             f"{len(fresh_rows)} upload(s) under {MIN_AGE_DAYS_FOR_RANKING} days old (or undated) were "
@@ -1312,13 +1348,14 @@ def run_channel_audit(db: Session, channel: Channel, cfg: AuditConfig | None = N
         activity_score=activity_score,
         performance_score=performance_score,
         findings=findings,
-        top_performers=mature_desc[:10],
-        # Underperformance requires >=7 days of observation AND a computable
-        # baseline. Fresh uploads are excluded rather than labelled failures.
-        underperformers=[
-            r for r in mature_desc
-            if r.vs_baseline_pct is not None and r.vs_baseline_pct < -40
-        ][-10:],
+        # Ranked by views relative to same-format videos of similar age, and only
+        # videos that could be judged (enough peers, enough views) are listed.
+        top_performers=sorted(
+            (r for r in judged if r.vs_baseline_pct > 0),
+            key=lambda r: -r.vs_baseline_pct)[:10],
+        underperformers=sorted(
+            (r for r in judged if r.vs_baseline_pct < -40),
+            key=lambda r: r.vs_baseline_pct)[:10],
         outliers=outliers,
         fresh_videos_provisional=fresh_rows[:10],
         strong_topics=strong,
