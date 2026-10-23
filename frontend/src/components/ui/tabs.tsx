@@ -49,7 +49,7 @@ export function Tabs({
   );
   const [selected, setSelected] = useState<string | null>(null);
   const fromUrl = urlParam ? new URLSearchParams(search).get(urlParam) : null;
-  const active = selected ?? fromUrl ?? defaultId ?? tabs[0]?.id;
+  const wanted = selected ?? fromUrl;
   const baseId = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -68,7 +68,9 @@ export function Tabs({
     ? [{ id: ALL_ID, label: allLabel, content: <ShowAllContext.Provider value>{stacked}</ShowAllContext.Provider> }]
     : [];
   const items = [...all, ...tabs];
-  const current = items.find((t) => t.id === active) ?? items[0];
+  // An unknown id (e.g. a stale ?tab= value) falls back to the default tab, not the first one.
+  const current =
+    items.find((t) => t.id === wanted) ?? items.find((t) => t.id === defaultId) ?? items[0];
   if (!current) return null;
 
   function onKeyDown(e: React.KeyboardEvent, index: number) {
