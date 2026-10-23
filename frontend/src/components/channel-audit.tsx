@@ -208,6 +208,19 @@ function statusIcon(finding: AuditFinding) {
   return <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />;
 }
 
+/** Long numeric lists (e.g. 500 upload gaps) become a one-line summary instead
+ *  of a wall of numbers that overflows the card. Short values print as-is. */
+function formatEvidenceValue(v: unknown): string {
+  if (Array.isArray(v) && v.length > 8 && v.every((x) => typeof x === "number")) {
+    const nums = [...(v as number[])].sort((a, b) => a - b);
+    const mid = Math.floor(nums.length / 2);
+    const median = nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+    const r = (n: number) => String(Math.round(n * 100) / 100);
+    return `${nums.length} values · min ${r(nums[0])} · median ${r(median)} · max ${r(nums[nums.length - 1])}`;
+  }
+  return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
+
 /** Compact key/value rendering of a finding's evidence dict (real data only). */
 function EvidenceList({ evidence }: { evidence: Record<string, unknown> }) {
   const entries = Object.entries(evidence ?? {});
@@ -215,10 +228,10 @@ function EvidenceList({ evidence }: { evidence: Record<string, unknown> }) {
   return (
     <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 rounded-md bg-muted/50 p-3 text-xs sm:grid-cols-2">
       {entries.map(([k, v]) => (
-        <div key={k} className="flex justify-between gap-2">
-          <dt className="text-muted-foreground">{k.replace(/_/g, " ")}</dt>
-          <dd className="text-right font-medium tabular-nums">
-            {typeof v === "object" ? JSON.stringify(v) : String(v)}
+        <div key={k} className="flex min-w-0 justify-between gap-2">
+          <dt className="shrink-0 text-muted-foreground">{k.replace(/_/g, " ")}</dt>
+          <dd className="min-w-0 break-words text-right font-medium tabular-nums">
+            {formatEvidenceValue(v)}
           </dd>
         </div>
       ))}
