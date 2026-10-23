@@ -22,6 +22,7 @@
     --input: 240 5.9% 90%;
     --ring: 0 84% 60%;
     --radius: 0.75rem;
+    color-scheme: light;
   }
 
   .dark {
@@ -42,6 +43,7 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 0 84% 60%;
+    color-scheme: dark; /* native scrollbars and form controls follow the theme */
   }
 }
 
