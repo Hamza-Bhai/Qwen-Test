@@ -1,9 +1,12 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   Globe,
   Loader2,
   MapPin,
@@ -15,6 +18,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { syncChannel } from "@/lib/api";
 import { ChannelAuditView } from "@/components/channel-audit";
 import {
@@ -52,6 +56,44 @@ function StatTile({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ExpandableText({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+
+  // Measure only while clamped; once expanded keep the toggle so it can collapse.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !expanded) setOverflowing(el.scrollHeight > el.clientHeight + 1);
+  }, [text, expanded]);
+
+  return (
+    <div>
+      <p
+        ref={ref}
+        className={`whitespace-pre-line break-words text-sm text-muted-foreground${expanded ? "" : " line-clamp-3"}`}
+      >
+        {text}
+      </p>
+      {overflowing || expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+        >
+          {expanded ? "Show less" : "See more"}
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -96,9 +138,9 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
                 </Badge>
               ) : null}
             </div>
-            <p className="whitespace-pre-line break-words text-sm text-muted-foreground">
-              {ch.description && ch.description.length > 0 ? ch.description : "No public description."}
-            </p>
+            <ExpandableText
+              text={ch.description && ch.description.length > 0 ? ch.description : "No public description."}
+            />
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
@@ -144,6 +186,16 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
         </CardContent>
       </Card>
 
+      <Tabs
+        allLabel="Full data"
+        urlParam="tab"
+        defaultId="overview"
+        tabs={[
+          {
+            id: "overview",
+            label: "Overview",
+            content: (
+              <>
       {/* Core stats (real API values) */}
       <section aria-labelledby="stats-heading" className="space-y-3">
         <h3 id="stats-heading" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -189,6 +241,15 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
         </div>
       </section>
 
+              </>
+            ),
+          },
+          {
+            id: "videos",
+            label: "Videos",
+            badge: overview.recent_videos.length,
+            content: (
+              <>
       {/* Recent videos */}
       <section aria-labelledby="videos-heading" className="space-y-3">
         <h3 id="videos-heading" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -229,6 +290,15 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
         )}
       </section>
 
+              </>
+            ),
+          },
+          {
+            id: "history",
+            label: "History",
+            badge: overview.history.length,
+            content: (
+              <>
       {/* Analysis history */}
       <section aria-labelledby="history-heading" className="space-y-3">
         <h3 id="history-heading" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -270,8 +340,19 @@ export function ChannelOverviewView({ overview }: { overview: ChannelOverview })
         </Card>
       </section>
 
-      {/* Phase 2 — rule-based audit (separate query; zero quota, DB-only) */}
-      <ChannelAuditView channelId={overview.channel.id} />
+              </>
+            ),
+          },
+          {
+            id: "audit",
+            label: "Audit",
+            content: (
+              // Phase 2 — rule-based audit (separate query; zero quota, DB-only)
+              <ChannelAuditView channelId={overview.channel.id} />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

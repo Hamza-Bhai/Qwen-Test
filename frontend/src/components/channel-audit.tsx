@@ -51,6 +51,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs } from "@/components/ui/tabs";
 import { ErrorMessage } from "@/components/error-message";
 
 const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
@@ -497,7 +498,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
 
   if (isPending) {
     return (
-      <div role="status" aria-label="Loading channel audit" className="space-y-4 pt-10">
+      <div role="status" aria-label="Loading channel audit" className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Running channel audit…
         </div>
@@ -512,7 +513,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
 
   if (isError) {
     return (
-      <div className="space-y-3 pt-10">
+      <div className="space-y-3">
         <ErrorMessage error={error} />
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Retry audit
@@ -551,7 +552,7 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
   const formatsAvailable = perf.shorts_count + perf.longform_count > 0;
 
   return (
-    <section aria-labelledby="audit-heading" className="space-y-6 pt-10">
+    <section aria-labelledby="audit-heading" className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 id="audit-heading" className="text-xl font-semibold">
@@ -600,6 +601,15 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         </Card>
       )}
 
+      <Tabs
+        size="sm"
+        urlParam="audit"
+        tabs={[
+          {
+            id: "scores",
+            label: "Scores",
+            content: (
+              <>
       {/* Reliability-transparency panel (freshness / provenance / limits). */}
       <TransparencyPanel audit={audit} />
 
@@ -634,6 +644,15 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         </Card>
       </div>
 
+              </>
+            ),
+          },
+          {
+            id: "findings",
+            label: "Findings",
+            badge: detected.length,
+            content: (
+              <>
       {/* B. Findings */}
       <Card>
         <CardHeader className="pb-2">
@@ -689,6 +708,14 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         </CardContent>
       </Card>
 
+              </>
+            ),
+          },
+          {
+            id: "stats",
+            label: "Stats & charts",
+            content: (
+              <>
       {/* C. Performance summary */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Total views (analyzed)" value={formatCompact(perf.total_views)} />
@@ -866,6 +893,14 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
         )}
       </div>
 
+              </>
+            ),
+          },
+          {
+            id: "rankings",
+            label: "Rankings & topics",
+            content: (
+              <>
       {/* E. Rankings */}
       <div className="grid gap-4 lg:grid-cols-2">
         <RankingCard
@@ -952,6 +987,12 @@ export function ChannelAuditView({ channelId }: { channelId: number }) {
           </CardContent>
         </Card>
       </div>
+
+              </>
+            ),
+          },
+        ]}
+      />
 
       <p className="text-xs text-muted-foreground">
         Note: public YouTube data contains no CTR, impressions, audience-retention or private watch-time metrics — this
