@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.studio.models import StudioCompetitorVideo
-from app.studio.services.serpapi import SerpApiClient
+from app.studio.services.serpapi import SerpApiClient, SerpApiNoResults
 
 HOOK_WINDOW_MS = 60_000
 TRANSCRIPT_CACHE_DAYS = 30
@@ -33,9 +33,12 @@ def study_hook(db: Session, serp: SerpApiClient, youtube_video_id: str) -> dict:
     if video is None:
         raise UnknownVideo("Unknown competitor video")
 
-    payload = serp.get(
-        "youtube_video_transcript", {"v": youtube_video_id}, cache_days=TRANSCRIPT_CACHE_DAYS
-    )
+    try:
+        payload = serp.get(
+            "youtube_video_transcript", {"v": youtube_video_id}, cache_days=TRANSCRIPT_CACHE_DAYS
+        )
+    except SerpApiNoResults:
+        raise NoTranscript("No transcript available for this video") from None
     segments = [
         {"start_ms": int(s["start_ms"]), "text": str(s["snippet"]).strip()}
         for s in payload.get("transcript") or []

@@ -101,6 +101,15 @@ def test_empty_transcript_raises_and_stores_nothing(db):
     assert db.query(StudioCompetitorVideo).filter_by(youtube_video_id=VID).one().hook_text is None
 
 
+def test_serpapi_no_results_error_becomes_no_transcript_and_costs_nothing(db):
+    error = {"error": "YouTube Video Transcript hasn't returned any results for this query."}
+    client = SerpApiClient(db, http=FakeHttp(FakeResponse(200, error)))
+    with pytest.raises(NoTranscript, match="No transcript available"):
+        study_hook(db, client, VID)
+    assert client.usage().used == 0
+    assert db.query(StudioCompetitorVideo).filter_by(youtube_video_id=VID).one().hook_text is None
+
+
 def test_unknown_video_raises_before_any_search(db):
     http = FakeHttp()
     with pytest.raises(UnknownVideo):
@@ -131,6 +140,14 @@ def test_api_unknown_video_and_no_transcript_are_404(api, db):
     base = "/api/v1/studio/competitors/videos"
     assert client.post(f"{base}/doesnotexist/hook").status_code == 404
     assert client.post(f"{base}/{VID}/hook").status_code == 404
+
+
+def test_api_serpapi_no_results_is_404_not_502(api, db):
+    app, client = api
+    error = {"error": "YouTube Video Transcript hasn't returned any results for this query."}
+    _override(app, FakeHttp(FakeResponse(200, error)))
+    res = client.post(f"/api/v1/studio/competitors/videos/{VID}/hook")
+    assert res.status_code == 404 and "No transcript" in res.json()["detail"]
 
 
 def test_budget_exceeded_maps_to_429(api, db, monkeypatch):

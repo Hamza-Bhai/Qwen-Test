@@ -15,6 +15,7 @@ from app.studio.services.serpapi import (
     SerpApiBudgetExceeded,
     SerpApiClient,
     SerpApiError,
+    SerpApiNoResults,
     SerpApiNotConfigured,
 )
 
@@ -112,6 +113,16 @@ def test_http_200_with_error_body_is_not_charged_or_cached(db):
     assert _rows(db) == []
     client.get("youtube", {"search_query": "zzz"})  # same call goes to HTTP again
     assert len(http.calls) == 2
+
+
+def test_no_results_error_is_its_own_subclass(db):
+    quiet = FakeHttp(FakeResponse(200, {"error": "YouTube Video Transcript hasn't returned any results for this query."}))
+    with pytest.raises(SerpApiNoResults):
+        SerpApiClient(db, http=quiet).get("youtube_video_transcript", {"v": "x"})
+    other = FakeHttp(FakeResponse(401, {"error": "Invalid API key"}))
+    with pytest.raises(SerpApiError) as exc:
+        SerpApiClient(db, http=other).get("youtube", {"search_query": "x"})
+    assert not isinstance(exc.value, SerpApiNoResults)
 
 
 def test_http_error_status_raises_and_is_not_charged(db):

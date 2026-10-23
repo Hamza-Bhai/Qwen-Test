@@ -20,13 +20,18 @@ from app.services.url_resolver import parse_channel_reference
 from app.services.youtube import YouTubeAPIError, YouTubeService, channel_payload_to_fields
 from app.studio.models import StudioCompetitor
 from app.studio.services.own_channel import get_own_channel
-from app.studio.services.serpapi import SerpApiBudgetExceeded, SerpApiClient, SerpApiError, SerpApiNotConfigured
+from app.studio.services.serpapi import (
+    SerpApiBudgetExceeded,
+    SerpApiClient,
+    SerpApiError,
+    SerpApiNoResults,
+    SerpApiNotConfigured,
+)
 from app.studio.services.settings_store import get_keywords
 
 logger = logging.getLogger(__name__)
 
 _CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
-_NO_RESULTS = re.compile(r"hasn'?t returned any results", re.IGNORECASE)
 
 MAX_KEYWORD_SEARCHES = 5
 MAX_RELATED_LOOKUPS = 3
@@ -209,10 +214,10 @@ def discover(
             return None
         except SerpApiNotConfigured:
             raise
+        except SerpApiNoResults as exc:  # a query with no results is normal: skip it
+            logger.info("SerpApi search had no results (%s): %s", engine, exc)
+            return {}
         except SerpApiError as exc:
-            if _NO_RESULTS.search(str(exc)):  # a query with no results is normal: skip it
-                logger.info("SerpApi search had no results (%s): %s", engine, exc)
-                return {}
             # Network/auth/server problems must be visible, not an empty "success".
             result.stopped_reason = "serpapi_error"
             result.message = str(exc)

@@ -8,6 +8,7 @@ for them). The API key is never logged, cached or put in an error message.
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -27,6 +28,13 @@ TIMEOUT_SECONDS = 30
 
 class SerpApiError(RuntimeError):
     """A SerpApi request failed (not charged)."""
+
+
+class SerpApiNoResults(SerpApiError):
+    """The search ran but found nothing (e.g. a video without a transcript); not charged."""
+
+
+_NO_RESULTS = re.compile(r"hasn'?t returned any results", re.IGNORECASE)
 
 
 class SerpApiNotConfigured(SerpApiError):
@@ -118,5 +126,6 @@ class SerpApiClient:
         error = payload.get("error")
         if response.status_code != 200 or error:
             message = str(error) if error else f"SerpApi returned HTTP {response.status_code}."
-            raise SerpApiError(message.replace(key, "***"))
+            message = message.replace(key, "***")
+            raise (SerpApiNoResults if _NO_RESULTS.search(message) else SerpApiError)(message)
         return payload
