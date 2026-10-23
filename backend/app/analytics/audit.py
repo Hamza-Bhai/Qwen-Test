@@ -30,8 +30,8 @@ Formulas (all documented in FORMULAS below and exposed in the API response):
   days_since_last      = (now - most recent published_at).days
   outlier              |vpd| > median(vpd) + 3 * MAD-ish spread (robust z via IQR fence)
   concentration        top-5 videos' share of total views of analyzed set
-  format split         estimated via duration (+ portrait contentDetails
-                       .dimension when present); NEVER an official Shorts flag
+  format split         youtube.com/shorts/<id> check, falling back to duration;
+                       NEVER an official Shorts flag
 
 Health score (0-100) is computed ONLY from components whose data exists;
 missing components are excluded and their weight renormalized — a channel is

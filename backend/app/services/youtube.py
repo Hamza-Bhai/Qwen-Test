@@ -225,18 +225,6 @@ def parse_iso8601_duration(value: str | None) -> int | None:
     return int(int(days) * 86400 + int(hours) * 3600 + int(minutes) * 60 + float(seconds))
 
 
-def parse_content_dimension(value: str | None) -> dict:
-    """Parse contentDetails.dimension ("1920x1080") into width/height ints.
-
-    Defensive: missing or malformed values yield (None, None) so sync never
-    crashes on unexpected API payloads."""
-    m = re.fullmatch(r"(\d+)x(\d+)", (value or "").strip())
-    return {
-        "content_width": int(m.group(1)) if m else None,
-        "content_height": int(m.group(2)) if m else None,
-    }
-
-
 # YouTube Shorts are capped at 3 minutes (60s before Oct 2024), so anything
 # longer is a regular upload without needing any further check.
 SHORTS_MAX_SECONDS = 180
@@ -308,10 +296,6 @@ def video_payload_to_fields(item: dict) -> dict:
         "published_at": snippet.get("publishedAt"),
         "live_broadcast_content": snippet.get("liveBroadcastContent"),
         "duration_seconds": parse_iso8601_duration(content.get("duration")),
-        # contentDimension is a public field ("WxH"); parsed defensively so a
-        # missing/malformed value stays None instead of crashing the sync.
-        **parse_content_dimension(
-            content.get("dimension") or content.get("contentDimension")),
         "tags": snippet.get("tags"),
         "category_id": snippet.get("categoryId"),
         "view_count": _to_int(stats.get("viewCount")) or 0,

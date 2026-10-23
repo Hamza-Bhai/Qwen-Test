@@ -91,10 +91,6 @@ class Video(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(String(512))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
-    # Unused: the Data API's contentDetails.dimension is "2d"/"3d", not "WxH",
-    # so these stay NULL. Kept to avoid a destructive migration.
-    content_width: Mapped[int | None] = mapped_column(Integer)
-    content_height: Mapped[int | None] = mapped_column(Integer)
     # Result of the youtube.com/shorts/<id> check (True = Short, False =
     # regular video, NULL = not checked / check failed -> duration fallback).
     is_short: Mapped[bool | None] = mapped_column(Boolean)

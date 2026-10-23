@@ -138,8 +138,6 @@ def sync_channel(db: Session, channel: Channel) -> dict:
             video.published_at = _parse_dt(vf["published_at"])
             video.duration_seconds = vf["duration_seconds"]
             video.live_broadcast_content = vf["live_broadcast_content"]
-            video.content_width = vf["content_width"]
-            video.content_height = vf["content_height"]
             video.tags = vf["tags"]
             video.category_id = vf["category_id"]
             video.view_count = vf["view_count"]
