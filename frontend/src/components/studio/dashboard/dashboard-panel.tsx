@@ -61,7 +61,7 @@ function AdvisorView({ channelId }: { channelId: number }) {
             <p className="text-muted-foreground">
               {ai.configured
                 ? `Answers come only from your own numbers, your competitors and YouTube search data — every answer shows its evidence. AI calls today: ${ai.used_today}/${ai.cap}.`
-                : "Add AI_API_KEY (any OpenAI-compatible provider) to backend/.env to get written advice. The rule-based findings below work without it."}
+                : "To get written advice, set AI_PROVIDER=claude_cli in backend/.env (uses your Claude subscription through the Claude Code CLI) or add AI_API_KEY for an OpenAI-compatible API, then restart the backend. The rule-based findings below work without it."}
             </p>
             {advice ? (
               <p className="text-xs text-muted-foreground">

@@ -26,6 +26,9 @@ from app.studio.services.serpapi import SerpApiClient
 
 router = APIRouter(prefix="/studio", tags=["studio"])
 
+NOT_CONFIGURED = ("AI is not configured: set AI_PROVIDER=claude_cli (uses your Claude subscription via the Claude Code CLI) "
+                "or add AI_API_KEY for an OpenAI-compatible API in backend/.env.")
+
 
 def serpapi_or_none(db: Session) -> SerpApiClient | None:
     return SerpApiClient(db) if get_settings().serpapi_key else None
@@ -76,7 +79,7 @@ def create_advice(connection_id: int, force: bool = False, db: Session = Depends
 
     def run():
         if not ai.configured:  # before building the pack, so no SerpApi search is spent
-            raise AINotConfigured("AI is not configured: add AI_API_KEY (and AI_BASE_URL / AI_MODEL) to backend/.env.")
+            raise AINotConfigured(NOT_CONFIGURED)
         return generate_advice(db, connection, ai, _pack(db, connection), force=force)
 
     report = _run_ai(run)
@@ -114,7 +117,7 @@ def create_ideas(connection_id: int, force: bool = False, db: Session = Depends(
 
     def run():
         if not ai.configured:
-            raise AINotConfigured("AI is not configured: add AI_API_KEY (and AI_BASE_URL / AI_MODEL) to backend/.env.")
+            raise AINotConfigured(NOT_CONFIGURED)
         return generate_ideas(db, connection, ai, _pack(db, connection), force=force)
 
     return [_idea_out(db, i) for i in _run_ai(run)]

@@ -151,7 +151,7 @@ function IdeasView({ channelId }: { channelId: number }) {
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
           <p className="text-muted-foreground">
             {ai && !ai.configured
-              ? "Add AI_API_KEY to backend/.env to get daily video ideas."
+              ? "Set AI_PROVIDER=claude_cli (or AI_API_KEY) in backend/.env and restart the backend to get daily video ideas."
               : `New ideas arrive once a day while the app runs; ideas that repeat your own titles are skipped.${ai ? ` AI calls today: ${ai.used_today}/${ai.cap}.` : ""}`}
           </p>
           <Button size="sm" onClick={() => generate.mutate()} disabled={generate.isPending || !ai?.configured || ai.used_today >= ai.cap}>

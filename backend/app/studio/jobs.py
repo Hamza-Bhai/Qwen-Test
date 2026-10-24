@@ -94,7 +94,7 @@ def _ideas_done_today(db: Session, connection_id: int, today) -> bool:
 def _advise_channel(db: Session, connection: StudioGoogleConnection, today) -> dict:
     result: dict = {"connection_id": connection.id, "outcomes": update_outcomes(db, connection, today=today)}
     ai = AIClient(db)
-    if not get_settings().ai_api_key:
+    if not ai.configured:
         result["ai"] = "not configured"
         return result
     if _ideas_done_today(db, connection.id, today):

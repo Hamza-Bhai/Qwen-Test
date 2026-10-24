@@ -1,4 +1,8 @@
-# Growth Studio — design
+# Growth - AI provider (2026-10-24, owner's request): besides an OpenAI-compatible API, `AI_PROVIDER=claude_cli` runs
+  `claude -p` (Claude Code CLI signed in with the owner's own Claude subscription) with all tools disabled,
+  `--safe-mode` (no CLAUDE.md/hooks/plugins/MCP) and in an empty temp folder. Personal use on this PC only;
+  it shares the subscription's usage limits. The daily cap still applies.
+Studio — design
 
 Personal tool, one user (the owner of the AXIOM MINDSET channel). Not a SaaS: no multi-user, no
 accounts, no billing, no new infrastructure.
