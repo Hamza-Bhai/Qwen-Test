@@ -124,6 +124,7 @@ def generate_advice(db: Session, connection: StudioGoogleConnection, ai, pack: d
         user = json.dumps({**pack_for_model(pack), "questions": QUESTION_LABELS}, ensure_ascii=False)
         reply, model = ai.complete_json(SYSTEM_PROMPT, user)
         payload = _validate(reply, {i["id"] for i in pack["items"]})
+        payload["evidence"] = pack_for_model(pack)["evidence"]  # lets the UI show what each id says
         report = StudioAdvisorReport(connection_id=connection.id, kind="advice", evidence_hash=digest,
                                      payload=payload, model=model)
         db.add(report)

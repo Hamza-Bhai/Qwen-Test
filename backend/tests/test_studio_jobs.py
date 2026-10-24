@@ -155,3 +155,40 @@ def test_my_channels_job_continues_after_one_failure(db, monkeypatch):
     assert last_run(jobs.MY_CHANNELS_JOB).status == "success"
     db.expire_all()
     assert db.get(type(first), first.id).last_error == "boom"
+
+
+def test_advisor_job_updates_outcomes_without_ai(db, monkeypatch):
+    from tests.studio_fakes import make_connection
+
+    conn = make_connection(db, 1)
+    make_connection(db, 2, status="disconnected")
+    seen = []
+    monkeypatch.setattr(jobs, "update_outcomes", lambda session_db, c, **kw: seen.append(c.id) or 0)
+    monkeypatch.setenv("AI_API_KEY", "")
+    get_settings.cache_clear()
+    result = jobs.advisor_daily_job()
+    assert seen == [conn.id]
+    assert result["results"] == [{"connection_id": conn.id, "outcomes": 0, "ai": "not configured"}]
+    assert last_run(jobs.ADVISOR_JOB).status == "success"
+
+
+def test_advisor_job_generates_once_per_day_and_isolates_failures(db, monkeypatch):
+    from tests.studio_fakes import make_connection
+
+    first, second = make_connection(db, 1), make_connection(db, 2)
+    monkeypatch.setenv("AI_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(jobs, "update_outcomes", lambda *a, **k: 0)
+    monkeypatch.setattr(jobs, "build_evidence", lambda *a, **k: {"items": []})
+    calls = []
+
+    def advice(session_db, conn, ai, pack, **kw):
+        calls.append(("advice", conn.id))
+        if conn.id == first.id:
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr(jobs, "generate_advice", advice)
+    monkeypatch.setattr(jobs, "generate_ideas", lambda session_db, conn, ai, pack, **kw: calls.append(("ideas", conn.id)) or [])
+    result = jobs.advisor_daily_job()
+    assert ("advice", second.id) in calls and ("ideas", second.id) in calls and ("ideas", first.id) in calls
+    assert result["results"][0]["advice_error"] == "provider down"

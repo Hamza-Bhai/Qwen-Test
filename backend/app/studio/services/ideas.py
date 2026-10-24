@@ -128,7 +128,8 @@ def generate_ideas(db: Session, connection: StudioGoogleConnection, ai, pack: di
             accepted.append({**idea.model_dump(), "upload_time": _upload_time(pack, idea.format)})
 
         report = StudioAdvisorReport(connection_id=connection.id, kind="ideas", evidence_hash=digest, model=model,
-                                     payload={"ideas": accepted, "skipped_duplicates": skipped})
+                                     payload={"ideas": accepted, "skipped_duplicates": skipped,
+                                              "evidence": pack_for_model(pack)["evidence"]})
         db.add(report)
         db.flush()
         rows = [StudioIdea(connection_id=connection.id, report_id=report.id, status="new", format=i["format"],
