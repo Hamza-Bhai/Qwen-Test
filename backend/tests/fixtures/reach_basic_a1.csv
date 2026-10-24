@@ -1,0 +1,6 @@
+date,channel_id,video_id,live_or_on_demand,subscribed_status,country_code,video_thumbnail_impressions,video_thumbnail_impressions_ctr
+20261020,UCmine1,v1,on_demand,subscribed,PK,100,0.05
+20261020,UCmine1,v1,on_demand,unsubscribed,US,300,0.02
+20261020,UCmine1,v2,on_demand,unsubscribed,PK,50,0.1
+20261021,UCmine1,v1,on_demand,unsubscribed,PK,10,0
+20261021,UCmine1,,on_demand,unsubscribed,PK,7,0.5
