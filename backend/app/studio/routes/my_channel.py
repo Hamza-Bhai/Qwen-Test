@@ -19,7 +19,13 @@ from app.studio.services.google_oauth import (
     complete_oauth,
     disconnect,
 )
-from app.studio.services.my_channel import connection_brief, get_overview, list_connections, pull_connection
+from app.studio.services.my_channel import (
+    PullInProgress,
+    connection_brief,
+    get_overview,
+    list_connections,
+    pull_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +101,7 @@ def pull_my_channel(connection_id: int, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=409, detail="This channel needs to be connected again before pulling.")
     try:
         return pull_connection(db, connection)
-    except GoogleAuthError as exc:
+    except (GoogleAuthError, PullInProgress) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except GoogleApiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None

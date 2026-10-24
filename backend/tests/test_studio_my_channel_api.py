@@ -210,3 +210,29 @@ def test_pull_network_error_is_502(client, monkeypatch):
     monkeypatch.setattr("app.studio.routes.my_channel.pull_connection", offline)
     r = client.post(f"{API}/my-channels/{conn_id}/pull")
     assert r.status_code == 502 and "reach Google" in r.json()["detail"]
+
+
+def test_second_pull_while_one_runs_is_409(client, monkeypatch):
+    conn_id = _conn()
+    held = my_channel.pull_lock(conn_id)
+    assert held.acquire(blocking=False)
+    try:
+        r = client.post(f"{API}/my-channels/{conn_id}/pull")
+        assert r.status_code == 409 and "already running" in r.json()["detail"]
+    finally:
+        held.release()
+
+
+def test_pull_connection_raises_when_locked(monkeypatch):
+    _stub_pull_steps(monkeypatch)
+    init_db()
+    with SessionLocal() as db:
+        conn = make_connection(db)
+        lock = my_channel.pull_lock(conn.id)
+        lock.acquire()
+        try:
+            with pytest.raises(my_channel.PullInProgress):
+                my_channel.pull_connection(db, conn, session=FakeSession(), today=date(2026, 10, 24))
+        finally:
+            lock.release()
+        assert my_channel.pull_connection(db, conn, session=FakeSession(), today=date(2026, 10, 24))["videos"] == 2

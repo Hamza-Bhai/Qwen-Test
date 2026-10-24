@@ -1,6 +1,7 @@
 """Connected own channels: run a full pull and build the My channel overview."""
 
 import logging
+import threading
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
@@ -36,12 +37,36 @@ OVERVIEW_VIDEOS = 50
 LOOKBACK_DAYS = 56  # two 28-day windows for the diagnosis
 
 
+class PullInProgress(RuntimeError):
+    pass
+
+
+_pull_locks: dict[int, threading.Lock] = {}
+_pull_locks_guard = threading.Lock()
+
+
+def pull_lock(connection_id: int) -> threading.Lock:
+    """One pull per channel at a time (the first pull after connect, the button and the daily job can overlap)."""
+    with _pull_locks_guard:
+        return _pull_locks.setdefault(connection_id, threading.Lock())
+
+
 def list_connections(db: Session) -> list[StudioGoogleConnection]:
     return list(db.scalars(select(StudioGoogleConnection).order_by(StudioGoogleConnection.id)).all())
 
 
 def pull_connection(db: Session, connection: StudioGoogleConnection, *, session=None, today: date | None = None) -> dict:
     """Pull everything for one channel. ``GoogleAuthError`` propagates; a reach failure is only reported."""
+    lock = pull_lock(connection.id)
+    if not lock.acquire(blocking=False):
+        raise PullInProgress("A pull for this channel is already running — refresh in a minute.")
+    try:
+        return _pull_connection(db, connection, session=session, today=today)
+    finally:
+        lock.release()
+
+
+def _pull_connection(db: Session, connection: StudioGoogleConnection, *, session, today: date | None) -> dict:
     today = today or datetime.now(timezone.utc).date()
     session = session or GoogleSession(db, connection)
     start, end = pull_window(db, connection, today)
