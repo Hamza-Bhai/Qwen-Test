@@ -278,3 +278,91 @@ export function studyHook(youtubeVideoId: string): Promise<HookResult> {
 export function getHook(youtubeVideoId: string): Promise<HookResult> {
   return studioRequest<HookResult>(`/competitors/videos/${youtubeVideoId}/hook`);
 }
+
+// ---- my channels (private analytics)
+export type ConnectionStatus = "connected" | "disconnected" | "needs_reconnect";
+
+export interface MyChannel {
+  id: number;
+  youtube_channel_id: string;
+  title: string;
+  thumbnail_url: string | null;
+  status: ConnectionStatus;
+  last_error: string | null;
+  connected_at: string | null;
+  last_pulled_at: string | null;
+}
+
+export interface ProgressMetric {
+  last_7: number | null;
+  prev_7: number | null;
+  change_7_pct: number | null;
+  last_28: number | null;
+  prev_28: number | null;
+  change_28_pct: number | null;
+}
+
+export type ProgressKey = "views" | "watch_minutes" | "subs_net" | "avg_view_pct" | "impressions" | "ctr";
+
+export interface Finding {
+  code: string;
+  title: string;
+  status: "issue" | "good" | "info" | "inconclusive";
+  confidence: "high" | "medium" | "low";
+  summary: string;
+  evidence: Record<string, unknown>;
+  action: string | null;
+}
+
+export interface MyVideo {
+  youtube_video_id: string;
+  title: string;
+  published_at: string | null;
+  is_short: boolean | null;
+  views: number | null;
+  avg_view_pct: number | null;
+  impressions_28d: number | null;
+  ctr_28d: number | null;
+  retention_30: number | null;
+}
+
+export interface MyChannelOverview {
+  channel: MyChannel;
+  progress: Record<ProgressKey, ProgressMetric>;
+  daily: { day: string; views: number; watch_minutes: number; subs_net: number; avg_view_pct: number }[];
+  traffic: { source: string; views: number; share: number }[];
+  videos: MyVideo[];
+  findings: Finding[];
+  public_channel_id: number | null;
+  reach_status: "ok" | "waiting_for_first_report" | "no_job";
+}
+
+export interface PullResult {
+  connection_id: number;
+  videos: number;
+  channel_days: number;
+  traffic_rows: number;
+  video_totals: number;
+  retention_videos: number;
+  reach?: { files: number; rows: number };
+  reach_error?: string;
+}
+
+/** Full-page navigation target: the backend redirects to Google's consent screen. */
+export const CONNECT_URL = `${API_BASE_URL}/studio/oauth/start`;
+
+export function listMyChannels(): Promise<MyChannel[]> {
+  return studioRequest<MyChannel[]>("/my-channels");
+}
+
+export function getMyChannelOverview(id: number): Promise<MyChannelOverview> {
+  return studioRequest<MyChannelOverview>(`/my-channels/${id}/overview`);
+}
+
+export function pullMyChannel(id: number): Promise<PullResult> {
+  return studioRequest<PullResult>(`/my-channels/${id}/pull`, json("POST"));
+}
+
+export function disconnectMyChannel(id: number): Promise<void> {
+  return studioRequest<void>(`/my-channels/${id}`, json("DELETE"));
+}
