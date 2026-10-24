@@ -211,3 +211,29 @@ def test_publish_timing_inconclusive_under_20_videos():
 def test_publish_timing_inconclusive_without_clear_gap():
     vids = [_on_weekday(f"a{i}", 0, 1200) for i in range(10)] + [_on_weekday(f"b{i}", 3, 1000) for i in range(10)]
     assert finding(run(videos=vids), "publish_timing").status == "inconclusive"
+
+
+def test_title_keywords_ignore_hashtags():
+    vids = [video(f"h{i}", age=10, views=3000, title=f"Calm evening {i} #shorts #motivationalstory") for i in range(3)]
+    vids += [video(f"x{i}", age=10, views=1000, title=f"Plain talk number {i}") for i in range(8)]
+    f = finding(run(videos=vids), "title_keywords")
+    keywords = [k["keyword"] for k in f.evidence["beat"] + f.evidence["lag"]]
+    assert "shorts" not in keywords and "motivationalstory" not in keywords
+    assert "calm" in keywords
+
+
+def test_publish_timing_is_per_format():
+    # Mixed together, Monday (all Shorts) would look 3x better than Thursday (all long-form).
+    shorts = [_on_weekday(f"a{i}", 0, 3000) for i in range(10)]
+    for v in shorts:
+        v.is_short = True
+    longs = [_on_weekday(f"b{i}", 3, 1000) for i in range(10)]
+    assert finding(run(videos=shorts + longs), "publish_timing").status == "inconclusive"
+
+
+def test_publish_timing_reports_the_format():
+    vids = [_on_weekday(f"a{i}", 0, 3000) for i in range(10)] + [_on_weekday(f"b{i}", 3, 1000) for i in range(10)]
+    for v in vids:
+        v.is_short = True
+    f = finding(run(videos=vids), "publish_timing")
+    assert f.status == "good" and f.evidence["format"] == "Shorts" and "Shorts" in f.summary

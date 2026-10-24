@@ -6,6 +6,7 @@ what is missing — never a guess. CTR values are percentages (0-100).
 """
 
 import calendar
+import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -348,7 +349,8 @@ def _title_keywords(videos, today) -> Finding:
         return _inconclusive(code, title, "Your long videos have no views per day yet.")
     groups: dict[str, list[float]] = defaultdict(list)
     for v, vpd in mature:
-        for token in set(_topic_tokens(v.title)):
+        # Hashtags (#shorts, #motivationalstory) are labels, not the topic of the title.
+        for token in set(_topic_tokens(re.sub(r"#\S+", " ", v.title))):
             groups[token].append(vpd)
     scored = [{"keyword": k, "videos": len(vals), "vs_baseline": round(median(vals) / baseline, 2)}
               for k, vals in groups.items() if len(vals) >= KEYWORD_MIN_REPEATS]
@@ -366,27 +368,39 @@ def _title_keywords(videos, today) -> Finding:
                    "Make more videos around the keywords that beat your baseline; rethink the angle of the lagging ones.")
 
 
-def _publish_timing(videos, today) -> Finding:
-    code, title = "publish_timing", "Best publish day"
-    mature = [(v, _views_per_day(v, today)) for v in videos]
-    mature = [(v, vpd) for v, vpd in mature if vpd is not None]
-    if len(mature) < TIMING_MIN_VIDEOS:
-        return _inconclusive(code, title, NO_TIMING_DATA, videos=len(mature), needed=TIMING_MIN_VIDEOS)
+def _timing_for(videos: list[tuple[VideoRow, float]]) -> dict | None:
     by_day: dict[int, list[float]] = defaultdict(list)
-    for v, vpd in mature:
+    for v, vpd in videos:
         by_day[v.published_at.weekday()].append(vpd)
     medians = {day: median(vals) for day, vals in by_day.items() if len(vals) >= TIMING_MIN_GROUP}
     if len(medians) < 2:
-        return _inconclusive(code, title, NO_TIMING_DATA, videos=len(mature), needed=TIMING_MIN_VIDEOS)
+        return None
     best, worst = max(medians, key=medians.get), min(medians, key=medians.get)
     if medians[worst] <= 0 or medians[best] / medians[worst] < TIMING_GAP:
-        return _inconclusive(code, title, NO_TIMING_DATA, videos=len(mature), needed=TIMING_MIN_VIDEOS)
-    evidence = {"best_day": calendar.day_name[best], "worst_day": calendar.day_name[worst],
-                "ratio": round(medians[best] / medians[worst], 2),
-                "median_views_per_day": {calendar.day_name[d]: round(m, 1) for d, m in sorted(medians.items())}}
+        return None
+    return {"best_day": calendar.day_name[best], "worst_day": calendar.day_name[worst],
+            "ratio": round(medians[best] / medians[worst], 2),
+            "median_views_per_day": {calendar.day_name[d]: round(m, 1) for d, m in sorted(medians.items())}}
+
+
+def _publish_timing(videos, today) -> Finding:
+    """Per format: Shorts and long-form reach people differently, so they are never mixed."""
+    code, title = "publish_timing", "Best publish day"
+    results = []
+    counts = {}
+    for name, is_short in (("long-form", False), ("Shorts", True)):
+        mature = [(v, _views_per_day(v, today)) for v in videos if v.is_short is is_short]
+        mature = [(v, vpd) for v, vpd in mature if vpd is not None]
+        counts[name] = len(mature)
+        if len(mature) >= TIMING_MIN_VIDEOS and (timing := _timing_for(mature)):
+            results.append({"format": name, "videos": len(mature), **timing})
+    if not results:
+        return _inconclusive(code, title, NO_TIMING_DATA, videos_per_format=counts, needed=TIMING_MIN_VIDEOS)
+    evidence = max(results, key=lambda r: r["ratio"])
     return Finding(code, title, "good", "medium",
-                   f"{calendar.day_name[best]} uploads get {evidence['ratio']}× the views/day of {calendar.day_name[worst]} uploads.",
-                   evidence, f"Prefer publishing on {calendar.day_name[best]}.")
+                   f"For {evidence['format']}, {evidence['best_day']} uploads get {evidence['ratio']}× the views/day "
+                   f"of {evidence['worst_day']} uploads.",
+                   evidence, f"Prefer publishing {evidence['format']} on {evidence['best_day']}.")
 
 
 def diagnose(days: list[DayRow], videos: list[VideoRow], traffic: list[TrafficRow], reach: list[ReachRow],
