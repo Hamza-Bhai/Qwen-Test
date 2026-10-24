@@ -1,0 +1,68 @@
+{
+ "search_parameters": {
+  "engine": "google_autocomplete",
+  "q": "sunday reset",
+  "client": "youtube"
+ },
+ "search_information": {
+  "autocomplete_results_state": "Showing completion results."
+ },
+ "suggestions": [
+  {
+   "value": "sunday reset",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset"
+  },
+  {
+   "value": "sunday reset checklist",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+checklist"
+  },
+  {
+   "value": "sunday reset quotes",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+quotes"
+  },
+  {
+   "value": "sunday reset meaning",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+meaning"
+  },
+  {
+   "value": "sunday reset routine",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+routine"
+  },
+  {
+   "value": "sunday reset list",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+list"
+  },
+  {
+   "value": "sunday reset tiktok",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+tiktok"
+  },
+  {
+   "value": "sunday reset cleaning",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+cleaning"
+  },
+  {
+   "value": "sunday reset ideas",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+ideas"
+  },
+  {
+   "value": "sunday reset images",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+images"
+  },
+  {
+   "value": "sunday reset youtube",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+youtube"
+  },
+  {
+   "value": "sunday reset day",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+day"
+  },
+  {
+   "value": "sunday reset captions",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+captions"
+  },
+  {
+   "value": "sunday reset coloring book",
+   "serpapi_link": "https://serpapi.com/search.json?client=youtube&engine=google_autocomplete&q=sunday+reset+coloring+book"
+  }
+ ]
+}

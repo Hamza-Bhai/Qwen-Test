@@ -1,0 +1,2824 @@
+{
+ "search_parameters": {
+  "engine": "google_trends",
+  "q": "sunday reset,discipline,morning routine,self improvement",
+  "hl": "en",
+  "gprop": "youtube",
+  "date": "today 3-m",
+  "tz": "420",
+  "data_type": "TIMESERIES"
+ },
+ "interest_over_time": {
+  "timeline_data": [
+   {
+    "date": "Jul 24, 2026",
+    "timestamp": "1784851200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "70",
+      "extracted_value": 70
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Jul 25, 2026",
+    "timestamp": "1784937600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "14",
+      "extracted_value": 14
+     }
+    ]
+   },
+   {
+    "date": "Jul 26, 2026",
+    "timestamp": "1785024000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "9",
+      "extracted_value": 9
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "72",
+      "extracted_value": 72
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Jul 27, 2026",
+    "timestamp": "1785110400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "5",
+      "extracted_value": 5
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "76",
+      "extracted_value": 76
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Jul 28, 2026",
+    "timestamp": "1785196800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "82",
+      "extracted_value": 82
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Jul 29, 2026",
+    "timestamp": "1785283200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "70",
+      "extracted_value": 70
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Jul 30, 2026",
+    "timestamp": "1785369600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Jul 31, 2026",
+    "timestamp": "1785456000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "82",
+      "extracted_value": 82
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 1, 2026",
+    "timestamp": "1785542400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Aug 2, 2026",
+    "timestamp": "1785628800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "9",
+      "extracted_value": 9
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "78",
+      "extracted_value": 78
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Aug 3, 2026",
+    "timestamp": "1785715200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "74",
+      "extracted_value": 74
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 4, 2026",
+    "timestamp": "1785801600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "44",
+      "extracted_value": 44
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 5, 2026",
+    "timestamp": "1785888000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 6, 2026",
+    "timestamp": "1785974400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Aug 7, 2026",
+    "timestamp": "1786060800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "69",
+      "extracted_value": 69
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 8, 2026",
+    "timestamp": "1786147200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 9, 2026",
+    "timestamp": "1786233600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "9",
+      "extracted_value": 9
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "14",
+      "extracted_value": 14
+     }
+    ]
+   },
+   {
+    "date": "Aug 10, 2026",
+    "timestamp": "1786320000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "74",
+      "extracted_value": 74
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "45",
+      "extracted_value": 45
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 11, 2026",
+    "timestamp": "1786406400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Aug 12, 2026",
+    "timestamp": "1786492800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 13, 2026",
+    "timestamp": "1786579200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 14, 2026",
+    "timestamp": "1786665600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "66",
+      "extracted_value": 66
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Aug 15, 2026",
+    "timestamp": "1786752000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "66",
+      "extracted_value": 66
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Aug 16, 2026",
+    "timestamp": "1786838400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "11",
+      "extracted_value": 11
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "44",
+      "extracted_value": 44
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Aug 17, 2026",
+    "timestamp": "1786924800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "76",
+      "extracted_value": 76
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "47",
+      "extracted_value": 47
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 18, 2026",
+    "timestamp": "1787011200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "78",
+      "extracted_value": 78
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "47",
+      "extracted_value": 47
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 19, 2026",
+    "timestamp": "1787097600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "76",
+      "extracted_value": 76
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "45",
+      "extracted_value": 45
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 20, 2026",
+    "timestamp": "1787184000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "80",
+      "extracted_value": 80
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Aug 21, 2026",
+    "timestamp": "1787270400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 22, 2026",
+    "timestamp": "1787356800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "44",
+      "extracted_value": 44
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 23, 2026",
+    "timestamp": "1787443200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "13",
+      "extracted_value": 13
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "46",
+      "extracted_value": 46
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Aug 24, 2026",
+    "timestamp": "1787529600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "74",
+      "extracted_value": 74
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "21",
+      "extracted_value": 21
+     }
+    ]
+   },
+   {
+    "date": "Aug 25, 2026",
+    "timestamp": "1787616000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Aug 26, 2026",
+    "timestamp": "1787702400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "78",
+      "extracted_value": 78
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 27, 2026",
+    "timestamp": "1787788800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "63",
+      "extracted_value": 63
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 28, 2026",
+    "timestamp": "1787875200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 29, 2026",
+    "timestamp": "1787961600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "65",
+      "extracted_value": 65
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Aug 30, 2026",
+    "timestamp": "1788048000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "11",
+      "extracted_value": 11
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "76",
+      "extracted_value": 76
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "47",
+      "extracted_value": 47
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Aug 31, 2026",
+    "timestamp": "1788134400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "79",
+      "extracted_value": 79
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "47",
+      "extracted_value": 47
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Sep 1, 2026",
+    "timestamp": "1788220800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "77",
+      "extracted_value": 77
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "21",
+      "extracted_value": 21
+     }
+    ]
+   },
+   {
+    "date": "Sep 2, 2026",
+    "timestamp": "1788307200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 3, 2026",
+    "timestamp": "1788393600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 4, 2026",
+    "timestamp": "1788480000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Sep 5, 2026",
+    "timestamp": "1788566400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Sep 6, 2026",
+    "timestamp": "1788652800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "9",
+      "extracted_value": 9
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "43",
+      "extracted_value": 43
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Sep 7, 2026",
+    "timestamp": "1788739200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "5",
+      "extracted_value": 5
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 8, 2026",
+    "timestamp": "1788825600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 9, 2026",
+    "timestamp": "1788912000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "1",
+      "extracted_value": 1
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "72",
+      "extracted_value": 72
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 10, 2026",
+    "timestamp": "1788998400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "1",
+      "extracted_value": 1
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "34",
+      "extracted_value": 34
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 11, 2026",
+    "timestamp": "1789084800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "70",
+      "extracted_value": 70
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 12, 2026",
+    "timestamp": "1789171200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "5",
+      "extracted_value": 5
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "66",
+      "extracted_value": 66
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 13, 2026",
+    "timestamp": "1789257600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "12",
+      "extracted_value": 12
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "71",
+      "extracted_value": 71
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "44",
+      "extracted_value": 44
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Sep 14, 2026",
+    "timestamp": "1789344000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "72",
+      "extracted_value": 72
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Sep 15, 2026",
+    "timestamp": "1789430400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "77",
+      "extracted_value": 77
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 16, 2026",
+    "timestamp": "1789516800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "85",
+      "extracted_value": 85
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Sep 17, 2026",
+    "timestamp": "1789603200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "80",
+      "extracted_value": 80
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "21",
+      "extracted_value": 21
+     }
+    ]
+   },
+   {
+    "date": "Sep 18, 2026",
+    "timestamp": "1789689600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "75",
+      "extracted_value": 75
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Sep 19, 2026",
+    "timestamp": "1789776000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 20, 2026",
+    "timestamp": "1789862400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "13",
+      "extracted_value": 13
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "72",
+      "extracted_value": 72
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Sep 21, 2026",
+    "timestamp": "1789948800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "83",
+      "extracted_value": 83
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 22, 2026",
+    "timestamp": "1790035200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "84",
+      "extracted_value": 84
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 23, 2026",
+    "timestamp": "1790121600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "82",
+      "extracted_value": 82
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 24, 2026",
+    "timestamp": "1790208000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "77",
+      "extracted_value": 77
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 25, 2026",
+    "timestamp": "1790294400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "75",
+      "extracted_value": 75
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "37",
+      "extracted_value": 37
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Sep 26, 2026",
+    "timestamp": "1790380800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Sep 27, 2026",
+    "timestamp": "1790467200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "15",
+      "extracted_value": 15
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "72",
+      "extracted_value": 72
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "17",
+      "extracted_value": 17
+     }
+    ]
+   },
+   {
+    "date": "Sep 28, 2026",
+    "timestamp": "1790553600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "83",
+      "extracted_value": 83
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "46",
+      "extracted_value": 46
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "24",
+      "extracted_value": 24
+     }
+    ]
+   },
+   {
+    "date": "Sep 29, 2026",
+    "timestamp": "1790640000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "79",
+      "extracted_value": 79
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Sep 30, 2026",
+    "timestamp": "1790726400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "86",
+      "extracted_value": 86
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   },
+   {
+    "date": "Oct 1, 2026",
+    "timestamp": "1790812800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "74",
+      "extracted_value": 74
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Oct 2, 2026",
+    "timestamp": "1790899200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Oct 3, 2026",
+    "timestamp": "1790985600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "70",
+      "extracted_value": 70
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Oct 4, 2026",
+    "timestamp": "1791072000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "12",
+      "extracted_value": 12
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Oct 5, 2026",
+    "timestamp": "1791158400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "5",
+      "extracted_value": 5
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "79",
+      "extracted_value": 79
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Oct 6, 2026",
+    "timestamp": "1791244800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "79",
+      "extracted_value": 79
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Oct 7, 2026",
+    "timestamp": "1791331200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "75",
+      "extracted_value": 75
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "38",
+      "extracted_value": 38
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "21",
+      "extracted_value": 21
+     }
+    ]
+   },
+   {
+    "date": "Oct 8, 2026",
+    "timestamp": "1791417600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "78",
+      "extracted_value": 78
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "18",
+      "extracted_value": 18
+     }
+    ]
+   },
+   {
+    "date": "Oct 9, 2026",
+    "timestamp": "1791504000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "34",
+      "extracted_value": 34
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Oct 10, 2026",
+    "timestamp": "1791590400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "15",
+      "extracted_value": 15
+     }
+    ]
+   },
+   {
+    "date": "Oct 11, 2026",
+    "timestamp": "1791676800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "11",
+      "extracted_value": 11
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "68",
+      "extracted_value": 68
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "16",
+      "extracted_value": 16
+     }
+    ]
+   },
+   {
+    "date": "Oct 12, 2026",
+    "timestamp": "1791763200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "74",
+      "extracted_value": 74
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "36",
+      "extracted_value": 36
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Oct 13, 2026",
+    "timestamp": "1791849600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "3",
+      "extracted_value": 3
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "76",
+      "extracted_value": 76
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "35",
+      "extracted_value": 35
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Oct 14, 2026",
+    "timestamp": "1791936000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "77",
+      "extracted_value": 77
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "34",
+      "extracted_value": 34
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Oct 15, 2026",
+    "timestamp": "1792022400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "75",
+      "extracted_value": 75
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   },
+   {
+    "date": "Oct 16, 2026",
+    "timestamp": "1792108800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "70",
+      "extracted_value": 70
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "41",
+      "extracted_value": 41
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   },
+   {
+    "date": "Oct 17, 2026",
+    "timestamp": "1792195200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "67",
+      "extracted_value": 67
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "40",
+      "extracted_value": 40
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "20",
+      "extracted_value": 20
+     }
+    ]
+   },
+   {
+    "date": "Oct 18, 2026",
+    "timestamp": "1792281600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "12",
+      "extracted_value": 12
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "65",
+      "extracted_value": 65
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "48",
+      "extracted_value": 48
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "23",
+      "extracted_value": 23
+     }
+    ]
+   },
+   {
+    "date": "Oct 19, 2026",
+    "timestamp": "1792368000",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "45",
+      "extracted_value": 45
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "26",
+      "extracted_value": 26
+     }
+    ]
+   },
+   {
+    "date": "Oct 20, 2026",
+    "timestamp": "1792454400",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "75",
+      "extracted_value": 75
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "34",
+      "extracted_value": 34
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "19",
+      "extracted_value": 19
+     }
+    ]
+   },
+   {
+    "date": "Oct 21, 2026",
+    "timestamp": "1792540800",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "78",
+      "extracted_value": 78
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "39",
+      "extracted_value": 39
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   },
+   {
+    "date": "Oct 22, 2026",
+    "timestamp": "1792627200",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "2",
+      "extracted_value": 2
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "77",
+      "extracted_value": 77
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "42",
+      "extracted_value": 42
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "23",
+      "extracted_value": 23
+     }
+    ]
+   },
+   {
+    "date": "Oct 23, 2026",
+    "timestamp": "1792713600",
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "4",
+      "extracted_value": 4
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "73",
+      "extracted_value": 73
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "80",
+      "extracted_value": 80
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   },
+   {
+    "date": "Oct 24, 2026",
+    "timestamp": "1792800000",
+    "partial_data": true,
+    "values": [
+     {
+      "query": "sunday reset",
+      "query_index": 0,
+      "value": "5",
+      "extracted_value": 5
+     },
+     {
+      "query": "discipline",
+      "query_index": 1,
+      "value": "59",
+      "extracted_value": 59
+     },
+     {
+      "query": "morning routine",
+      "query_index": 2,
+      "value": "100",
+      "extracted_value": 100
+     },
+     {
+      "query": "self improvement",
+      "query_index": 3,
+      "value": "22",
+      "extracted_value": 22
+     }
+    ]
+   }
+  ],
+  "averages": [
+   {
+    "query": "sunday reset",
+    "value": 4
+   },
+   {
+    "query": "discipline",
+    "value": 73
+   },
+   {
+    "query": "morning routine",
+    "value": 41
+   },
+   {
+    "query": "self improvement",
+    "value": 18
+   }
+  ]
+ }
+}
