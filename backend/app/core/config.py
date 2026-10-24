@@ -53,11 +53,12 @@ class Settings(BaseSettings):
     ai_base_url: str = "https://api.openai.com/v1"
     ai_api_key: str | None = None  # env: AI_API_KEY
     ai_model: str = "gpt-4o-mini"
+    ai_daily_cap: int = 3  # Growth Studio: at most this many AI calls per day
 
     # --- Scheduler -------------------------------------------------------------------
     enable_scheduler: bool = True  # in-process APScheduler (Phase 1)
 
-    @field_validator("serpapi_key", "google_oauth_client_id", "google_oauth_client_secret")
+    @field_validator("serpapi_key", "google_oauth_client_id", "google_oauth_client_secret", "ai_api_key")
     @classmethod
     def _blank_key_is_none(cls, v: str | None) -> str | None:
         return v.strip() or None if v else None
