@@ -191,6 +191,13 @@ AI calls are capped per day (default 3) and cached by evidence hash.
 - Studio is a separate area; the owner's own channel is linked to the existing public row instead of duplicated.
 - Several own channels can be connected; competitor features keep using the single "own channel"
   chosen in Settings (milestone B), private analytics are per connected channel.
+- Milestone D (2026-10-24): advice, ideas, planner and outcomes are per connected channel (channel
+  switcher, as on My channel); the competitor watchlist is shared. The suggested upload time comes from
+  the code's own publish-timing finding for the idea's format, never from the model. Trends and
+  autocomplete responses live in the SerpApi cache (7 days) instead of a `trend_point` table.
+  Without an AI key the Dashboard shows the rule-based findings and the evidence; advice and ideas say
+  "add AI_API_KEY". Real data showed Shorts carry ~75 % of AXIOM's views, so every comparison stays per
+  format.
 - Competitor discovery suggests, the owner approves; no automatic watchlist additions.
 - OAuth refresh token stored unencrypted in the local DB; revisit before deploying anywhere.
 - No new dependencies; OAuth implemented with `httpx`.
