@@ -3,7 +3,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -34,6 +35,22 @@ async def lifespan(app: FastAPI):
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
+
+
+# Registered before CORSMiddleware so it runs *inside* it: an unexpected error then
+# still carries CORS headers, and the browser shows a real 500 instead of
+# "cannot reach the backend". Details stay in the server log.
+@app.middleware("http")
+async def unexpected_errors_as_json(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:  # noqa: BLE001
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "The backend hit an unexpected error. Details are in the backend terminal."},
+        )
+
 
 app.add_middleware(
     CORSMiddleware,
