@@ -185,3 +185,28 @@ def test_delete_disconnects(client, monkeypatch):
     monkeypatch.setattr("app.studio.routes.my_channel.disconnect", lambda db, conn: calls.append(conn.id))
     assert client.delete(f"{API}/my-channels/{conn_id}").status_code == 204
     assert calls == [conn_id]
+
+
+def test_callback_network_error_redirects_with_message(client, monkeypatch):
+    import httpx
+
+    def offline(*a, **k):
+        raise httpx.ConnectError("getaddrinfo failed")
+
+    monkeypatch.setattr("app.studio.routes.my_channel.complete_oauth", offline)
+    r = client.get(f"{API}/oauth/callback", params={"code": "c", "state": "s"})
+    assert r.status_code == 307
+    assert "reach Google" in parse_qs(urlparse(r.headers["location"]).query)["oauth_error"][0]
+
+
+def test_pull_network_error_is_502(client, monkeypatch):
+    import httpx
+
+    conn_id = _conn()
+
+    def offline(db, conn, **kw):
+        raise httpx.ConnectError("getaddrinfo failed")
+
+    monkeypatch.setattr("app.studio.routes.my_channel.pull_connection", offline)
+    r = client.post(f"{API}/my-channels/{conn_id}/pull")
+    assert r.status_code == 502 and "reach Google" in r.json()["detail"]

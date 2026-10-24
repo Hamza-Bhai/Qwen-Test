@@ -3,6 +3,7 @@
 import logging
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -23,6 +24,8 @@ from app.studio.services.my_channel import connection_brief, get_overview, list_
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/studio", tags=["studio"])
+
+OFFLINE_MESSAGE = "Could not reach Google — check the internet connection and try again."
 
 
 def _back_to_ui(**params) -> RedirectResponse:
@@ -66,6 +69,9 @@ def oauth_callback(
     except (ValueError, OAuthNotConfigured, GoogleApiError) as exc:  # OAuthStateError is a ValueError
         db.rollback()
         return _back_to_ui(oauth_error=str(exc))
+    except httpx.HTTPError:
+        db.rollback()
+        return _back_to_ui(oauth_error=OFFLINE_MESSAGE)
     background.add_task(pull_in_background, connection.id)
     return _back_to_ui(connected=connection.id)
 
@@ -93,6 +99,9 @@ def pull_my_channel(connection_id: int, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except GoogleApiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+    except httpx.HTTPError:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=OFFLINE_MESSAGE) from None
 
 
 @router.get("/my-channels/{connection_id}/overview")
