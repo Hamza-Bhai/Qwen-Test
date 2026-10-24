@@ -131,3 +131,27 @@ def test_scheduler_registers_studio_jobs(monkeypatch):
             assert by_id[job_id].next_run_time - datetime.now(timezone.utc) < timedelta(minutes=2)
     finally:
         scheduler_module.stop_scheduler()
+
+
+def test_my_channels_job_continues_after_one_failure(db, monkeypatch):
+    from app.studio.services import my_channel
+    from tests.studio_fakes import make_connection
+
+    first = make_connection(db, 1)
+    make_connection(db, 2)
+    make_connection(db, 3, status="disconnected")
+    seen = []
+
+    def fake_pull(session_db, conn, **kw):
+        seen.append(conn.id)
+        if conn.id == first.id:
+            raise RuntimeError("boom")
+        return {"connection_id": conn.id}
+
+    monkeypatch.setattr(my_channel, "pull_connection", fake_pull)
+    result = jobs.my_channels_pull_job()
+    assert len(seen) == 2  # the disconnected channel is skipped
+    assert result["results"][0] == {"connection_id": first.id, "error": "boom"}
+    assert last_run(jobs.MY_CHANNELS_JOB).status == "success"
+    db.expire_all()
+    assert db.get(type(first), first.id).last_error == "boom"

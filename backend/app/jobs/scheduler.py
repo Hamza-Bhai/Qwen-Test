@@ -12,7 +12,15 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import get_settings
 from app.jobs.sync_jobs import sync_all_channels_job
-from app.studio.jobs import DISCOVERY_JOB, SYNC_JOB, competitor_discovery_job, competitor_sync_job, job_overdue
+from app.studio.jobs import (
+    DISCOVERY_JOB,
+    MY_CHANNELS_JOB,
+    SYNC_JOB,
+    competitor_discovery_job,
+    competitor_sync_job,
+    job_overdue,
+    my_channels_pull_job,
+)
 from app.services.cache import ResponseCache
 from app.db.session import SessionLocal
 
@@ -60,6 +68,13 @@ def start_scheduler() -> BackgroundScheduler | None:
         id=SYNC_JOB,
         replace_existing=True,
         **catch_up(SYNC_JOB, timedelta(hours=24)),
+    )
+    _scheduler.add_job(
+        my_channels_pull_job,
+        IntervalTrigger(hours=24),
+        id=MY_CHANNELS_JOB,
+        replace_existing=True,
+        **catch_up(MY_CHANNELS_JOB, timedelta(hours=24)),
     )
     # Skips itself (recorded as "skipped") unless the owner switched auto-discovery on.
     _scheduler.add_job(

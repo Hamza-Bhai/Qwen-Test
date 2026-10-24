@@ -16,6 +16,7 @@ from app.db.session import SessionLocal
 from app.services.channel_service import get_service
 from app.studio.services.competitor_sync import sync_all_watching
 from app.studio.services.discovery import discover
+from app.studio.services.my_channel import pull_all_connected
 from app.studio.services.serpapi import SerpApiClient
 from app.studio.services.settings_store import get_auto_discovery
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 SYNC_JOB = "studio_competitor_sync"
 DISCOVERY_JOB = "studio_competitor_discovery"
+MY_CHANNELS_JOB = "studio_my_channels_pull"
 
 
 def _finish(run: JobRun, status: str, detail: dict | None) -> None:
@@ -44,6 +46,26 @@ def competitor_sync_job() -> dict:
             _finish(run, "success", {"results": results})
         except Exception as exc:  # noqa: BLE001
             logger.warning("Competitor sync job failed: %s", exc)
+            _finish(run, "failed", {"error": str(exc)})
+        db.commit()
+        return {"job_run_id": run.id, "results": results}
+    finally:
+        db.close()
+
+
+def my_channels_pull_job() -> dict:
+    """Pull private analytics for every connected own channel (daily)."""
+    db = SessionLocal()
+    try:
+        run = JobRun(job_name=MY_CHANNELS_JOB)
+        db.add(run)
+        db.commit()
+        results: list[dict] = []
+        try:
+            results = pull_all_connected(db)
+            _finish(run, "success", {"results": results})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("My-channels pull job failed: %s", exc)
             _finish(run, "failed", {"error": str(exc)})
         db.commit()
         return {"job_run_id": run.id, "results": results}
