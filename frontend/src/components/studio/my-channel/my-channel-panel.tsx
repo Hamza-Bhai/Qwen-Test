@@ -4,22 +4,15 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Plus, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorMessage } from "@/components/error-message";
+import { ChannelSwitcher, defaultChannelId } from "@/components/studio/channel-switcher";
 import { ChannelOverview } from "@/components/studio/my-channel/channel-overview";
-import { CONNECT_URL, listMyChannels, type MyChannel } from "@/lib/studio-api";
-import { cn } from "@/lib/utils";
+import { CONNECT_URL, listMyChannels } from "@/lib/studio-api";
 
 export const MY_CHANNELS_KEY = ["studio", "my-channels"] as const;
-
-const STATUS_LABEL: Record<MyChannel["status"], string> = {
-  connected: "Connected",
-  disconnected: "Disconnected",
-  needs_reconnect: "Reconnect needed",
-};
 
 function ConnectButton({ label = "Connect a channel" }: { label?: string }) {
   return (
@@ -55,7 +48,7 @@ export function MyChannelPanel() {
   const [selected, setSelected] = useState<number | null>(null);
   const { data, isPending, isError, error } = useQuery({ queryKey: MY_CHANNELS_KEY, queryFn: listMyChannels });
 
-  const activeId = selected ?? oauth.connected ?? data?.find((c) => c.status !== "disconnected")?.id ?? data?.[0]?.id ?? null;
+  const activeId = selected ?? oauth.connected ?? defaultChannelId(data);
   const justConnected = data?.find((c) => c.id === oauth.connected);
 
   if (isPending) {
@@ -106,31 +99,9 @@ export function MyChannelPanel() {
         </Card>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Connected channels">
-            {data.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                role="tab"
-                aria-selected={c.id === activeId}
-                onClick={() => setSelected(c.id)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors",
-                  c.id === activeId ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted"
-                )}
-              >
-                {c.thumbnail_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.thumbnail_url} alt="" className="h-5 w-5 rounded-full" />
-                ) : null}
-                {c.title}
-                {c.status !== "connected" ? (
-                  <Badge variant={c.status === "needs_reconnect" ? "destructive" : "outline"}>{STATUS_LABEL[c.status]}</Badge>
-                ) : null}
-              </button>
-            ))}
+          <ChannelSwitcher channels={data} activeId={activeId} onSelect={setSelected}>
             <ConnectButton />
-          </div>
+          </ChannelSwitcher>
           {activeId !== null ? <ChannelOverview key={activeId} channelId={activeId} /> : null}
         </>
       )}

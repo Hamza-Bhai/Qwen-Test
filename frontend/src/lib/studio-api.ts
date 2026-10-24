@@ -366,3 +366,115 @@ export function pullMyChannel(id: number): Promise<PullResult> {
 export function disconnectMyChannel(id: number): Promise<void> {
   return studioRequest<void>(`/my-channels/${id}`, json("DELETE"));
 }
+
+// ---- advisor (Dashboard) and ideas (Ideas & Plan)
+export type Confidence = "high" | "medium" | "low";
+
+export interface EvidenceRef {
+  id: string;
+  kind: string;
+  text: string;
+}
+
+export interface AdviceAnswer {
+  question: string;
+  answer: string;
+  evidence_ids: string[];
+  confidence: Confidence;
+}
+
+export interface Advice {
+  answers: AdviceAnswer[];
+  evidence: EvidenceRef[];
+  created_at: string;
+  model: string;
+}
+
+export interface AiUsage {
+  configured: boolean;
+  used_today: number;
+  cap: number;
+}
+
+export interface AdvisorView {
+  ai: AiUsage;
+  questions: Record<string, string>;
+  advice: Advice | null;
+  findings: Finding[];
+}
+
+export type IdeaStatus = "new" | "saved" | "approved" | "rejected" | "scheduled" | "published";
+
+export interface IdeaPayload {
+  topic: string;
+  reason: string;
+  format: "short" | "long";
+  titles: string[];
+  hook: string;
+  outline: string[];
+  duration_minutes: number;
+  description: string;
+  hashtags: string[];
+  tags: string[];
+  competitor_refs: string[];
+  evidence_ids: string[];
+  confidence: Confidence;
+  priority: number;
+  upload_time: string;
+}
+
+export interface IdeaOutcome {
+  checkpoint: number;
+  verdict: "worked" | "neutral" | "didnt" | "no_baseline";
+  ratio: number | null;
+  views_per_day: number;
+  baseline_vpd: number | null;
+}
+
+export interface Idea {
+  id: number;
+  status: IdeaStatus;
+  format: "short" | "long";
+  topic: string;
+  payload: IdeaPayload;
+  created_at: string | null;
+  planned_date: string | null;
+  published_video_id: string | null;
+  published_at: string | null;
+  baseline: { format: string; median_vpd: number | null; videos: number } | null;
+  outcomes: IdeaOutcome[];
+}
+
+export interface WhatWorked {
+  groups: { group: string; worked: number; neutral: number; didnt: number; n: number }[];
+  too_few: string[];
+  caveat: string;
+}
+
+export function getAdvisor(channelId: number): Promise<AdvisorView> {
+  return studioRequest<AdvisorView>(`/advisor/${channelId}`);
+}
+
+export function generateAdvice(channelId: number, force = false): Promise<Advice> {
+  return studioRequest<Advice>(`/advisor/${channelId}/generate?force=${force}`, json("POST"));
+}
+
+export function listIdeas(channelId: number): Promise<Idea[]> {
+  return studioRequest<Idea[]>(`/ideas/${channelId}`);
+}
+
+export function generateIdeas(channelId: number, force = false): Promise<Idea[]> {
+  return studioRequest<Idea[]>(`/ideas/${channelId}/generate?force=${force}`, json("POST"));
+}
+
+export function updateIdea(ideaId: number, patch: { status?: IdeaStatus; planned_date?: string }): Promise<Idea> {
+  return studioRequest<Idea>(`/ideas/item/${ideaId}`, json("PATCH", patch));
+}
+
+export function markIdeaPublished(ideaId: number, youtubeVideoId: string): Promise<Idea> {
+  return studioRequest<Idea>(`/ideas/item/${ideaId}/published`, json("POST", { youtube_video_id: youtubeVideoId }));
+}
+
+export function getWhatWorked(channelId: number): Promise<WhatWorked> {
+  return studioRequest<WhatWorked>(`/ideas/${channelId}/what-worked`);
+}

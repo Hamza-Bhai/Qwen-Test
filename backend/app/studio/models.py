@@ -218,3 +218,53 @@ class StudioReachDaily(Base):
     youtube_video_id: Mapped[str] = mapped_column(String(32))
     impressions: Mapped[int] = mapped_column(Integer, default=0)
     clicks: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+# --- Milestone D: advisor answers, video ideas and their outcomes ----------------------------
+
+
+class StudioAdvisorReport(Base):
+    """One validated AI reply (advice or ideas), cached by the hash of the evidence it was given."""
+
+    __tablename__ = "studio_advisor_report"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    kind: Mapped[str] = mapped_column(String(16))  # advice | ideas
+    evidence_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    payload: Mapped[dict] = mapped_column(JSON)
+    model: Mapped[str] = mapped_column(String(100), default="")
+
+
+class StudioIdea(Base):
+    __tablename__ = "studio_idea"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    report_id: Mapped[int | None] = mapped_column(ForeignKey("studio_advisor_report.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    status: Mapped[str] = mapped_column(String(16), index=True)  # new | saved | approved | rejected | scheduled | published
+    format: Mapped[str] = mapped_column(String(8))  # short | long
+    topic: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[dict] = mapped_column(JSON)
+    planned_date: Mapped[date | None] = mapped_column(Date)
+    published_video_id: Mapped[str | None] = mapped_column(String(32))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    baseline: Mapped[dict | None] = mapped_column(JSON)
+
+
+class StudioIdeaOutcome(Base):
+    """Day-7 / day-28 result of a published idea against the owner's baseline at publish time."""
+
+    __tablename__ = "studio_idea_outcome"
+    __table_args__ = (UniqueConstraint("idea_id", "checkpoint"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    idea_id: Mapped[int] = mapped_column(ForeignKey("studio_idea.id", ondelete="CASCADE"), index=True)
+    checkpoint: Mapped[int] = mapped_column(Integer)  # 7 | 28
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    views_per_day: Mapped[float] = mapped_column(Float)
+    baseline_vpd: Mapped[float | None] = mapped_column(Float)
+    ratio: Mapped[float | None] = mapped_column(Float)
+    verdict: Mapped[str] = mapped_column(String(10))  # worked | neutral | didnt | no_baseline

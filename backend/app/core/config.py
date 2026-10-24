@@ -53,11 +53,17 @@ class Settings(BaseSettings):
     ai_base_url: str = "https://api.openai.com/v1"
     ai_api_key: str | None = None  # env: AI_API_KEY
     ai_model: str = "gpt-4o-mini"
+    ai_daily_cap: int = 3  # Growth Studio: at most this many AI calls per day
+    # "openai" = any OpenAI-compatible API (AI_* above); "claude_cli" = the local Claude Code CLI,
+    # signed in with the owner's own Claude subscription (personal use on this PC only).
+    ai_provider: str = "openai"
+    claude_cli_path: str = "claude"
+    claude_cli_model: str | None = None  # e.g. "sonnet" or "opus"; empty = the CLI's default
 
     # --- Scheduler -------------------------------------------------------------------
     enable_scheduler: bool = True  # in-process APScheduler (Phase 1)
 
-    @field_validator("serpapi_key", "google_oauth_client_id", "google_oauth_client_secret")
+    @field_validator("serpapi_key", "google_oauth_client_id", "google_oauth_client_secret", "ai_api_key")
     @classmethod
     def _blank_key_is_none(cls, v: str | None) -> str | None:
         return v.strip() or None if v else None
