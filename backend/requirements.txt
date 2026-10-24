@@ -7,6 +7,8 @@ pydantic-settings>=2.3
 httpx>=0.27
 apscheduler>=3.10
 python-dotenv>=1.0
+# IANA timezone data for zoneinfo (Windows has no system copy)
+tzdata>=2024.1
 # PostgreSQL driver (target production DB; SQLite works out of the box locally)
 psycopg2-binary>=2.9
 asyncpg>=0.29

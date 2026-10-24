@@ -4,6 +4,8 @@ Reusable by any external API service. Cached payloads always come from real
 API responses — this module never synthesizes data (rule #10).
 """
 
+import json
+from collections.abc import Collection
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
@@ -61,6 +63,28 @@ class ResponseCache:
             row.response_json = payload
             row.expires_at = expires
         self.db.commit()
+
+    def purge_matching(self, tokens: Collection[str | None]) -> int:
+        """Delete entries whose key or stored response mentions any token.
+
+        Cache rows are not linked to channels by a foreign key, so removing a
+        channel uses its YouTube ids (channel, uploads playlist, videos) to
+        find the rows that only exist because of it.
+        """
+        tokens = {t for t in tokens if t}
+        if not tokens:
+            return 0
+        removed = 0
+        rows = self.db.execute(
+            select(ApiCache).where(ApiCache.service == self.service)
+        ).scalars()
+        for row in list(rows):
+            haystack = row.cache_key + json.dumps(row.response_json)
+            if any(t in haystack for t in tokens):
+                self.db.delete(row)
+                removed += 1
+        self.db.commit()
+        return removed
 
     def purge_expired(self) -> int:
         result = self.db.execute(

@@ -13,6 +13,7 @@ module stays transport-level and reusable by later phases (analytics, AI).
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -27,6 +28,23 @@ _HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._-]{3,30}$")
 _CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
+# Analysis set: uploads from the last 90 days, but at least the latest 50 (so
+# low-frequency channels keep enough history for trend comparisons) and at
+# most 500 (bounds quota: ~20 units per full sync).
+ANALYSIS_WINDOW_DAYS = 90
+ANALYSIS_MIN_VIDEOS = 50
+ANALYSIS_MAX_VIDEOS = 500
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
 
 class YouTubeAPIError(RuntimeError):
     def __init__(self, status_code: int, message: str) -> None:
@@ -40,7 +58,15 @@ class YouTubeService:
     def __init__(self, cache: ResponseCache, quota: QuotaTracker) -> None:
         self.cache = cache
         self.quota = quota
-        self.settings = get_settings()
+        # When True, responses are always fetched from YouTube (still written
+        # to the cache). Explicit syncs set this so "last synced" never labels
+        # a cached payload as freshly fetched.
+        self.bypass_cache = False
+
+    @property
+    def settings(self):
+        """Resolve settings lazily so per-test env changes are always honored."""
+        return get_settings()
 
     # ------------------------------------------------------------------ core
     def _require_key(self) -> str:
@@ -58,15 +84,13 @@ class YouTubeService:
         cost = QUOTA_COSTS.get(endpoint, 1)
         cache_key = f"{endpoint}?{urlencode(sorted(params.items()))}"
 
-        if cache_ttl:
+        if cache_ttl and not self.bypass_cache:
             cached = self.cache.get(cache_key)
             if cached is not None:
                 return cached
 
         self.quota.check_available(cost)
 
-        query = dict(params)
-        query["key"] = key
         resource = {
             "channels.list": "channels",
             "channels.list_for_handle": "channels",
@@ -76,8 +100,10 @@ class YouTubeService:
         }[endpoint]
         url = f"{BASE_URL}/{resource}"
 
+        # Key goes in a header, never the query string: request URLs end up in
+        # logs, error messages and proxies.
         with httpx.Client(timeout=30) as client:
-            resp = client.get(url, params=query)
+            resp = client.get(url, params=params, headers={"X-Goog-Api-Key": key})
 
         if resp.status_code != 200:
             try:
@@ -144,17 +170,46 @@ class YouTubeService:
             raise YouTubeAPIError(404, f"No channel found for '{identifier}'.")
         return items[0]
 
-    def fetch_recent_videos(self, upload_playlist_id: str, *, limit: int = 50) -> list[dict]:
-        """Video IDs from the uploads playlist, then full stats via videos.list."""
-        pl = self.playlist_items(upload_playlist_id, max_results=min(limit, 50))
-        ids = [
-            item["contentDetails"]["videoId"]
-            for item in pl.get("items", [])
-            if item.get("contentDetails", {}).get("videoId")
-        ]
-        if not ids:
-            return []
-        return self.videos_list(ids).get("items", []) or []
+    def fetch_recent_videos(
+        self,
+        upload_playlist_id: str,
+        *,
+        window_days: int = ANALYSIS_WINDOW_DAYS,
+        min_videos: int = ANALYSIS_MIN_VIDEOS,
+        max_videos: int = ANALYSIS_MAX_VIDEOS,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Uploads from the last ``window_days`` (at least ``min_videos``, at
+        most ``max_videos``), newest first, with full stats via videos.list.
+
+        Pages through the uploads playlist (1 unit per 50) and stops at the
+        first upload older than the window once ``min_videos`` are collected.
+        """
+        cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=window_days)
+        ids: list[str] = []
+        page_token: str | None = None
+        while len(ids) < max_videos:
+            pl = self.playlist_items(upload_playlist_id, max_results=50, page_token=page_token)
+            past_window = False
+            for item in pl.get("items", []):
+                details = item.get("contentDetails", {})
+                if not details.get("videoId"):
+                    continue
+                published = _parse_iso(details.get("videoPublishedAt"))
+                if len(ids) >= min_videos and published and published < cutoff:
+                    past_window = True
+                    break
+                ids.append(details["videoId"])
+                if len(ids) >= max_videos:
+                    break
+            page_token = pl.get("nextPageToken")
+            if past_window or not page_token:
+                break
+
+        items: list[dict] = []
+        for start in range(0, len(ids), 50):
+            items.extend(self.videos_list(ids[start:start + 50]).get("items", []) or [])
+        return items
 
 
 def parse_iso8601_duration(value: str | None) -> int | None:
@@ -168,6 +223,34 @@ def parse_iso8601_duration(value: str | None) -> int | None:
         return None
     days, hours, minutes, seconds = (x or 0 for x in m.groups())
     return int(int(days) * 86400 + int(hours) * 3600 + int(minutes) * 60 + float(seconds))
+
+
+# YouTube Shorts are capped at 3 minutes (60s before Oct 2024), so anything
+# longer is a regular upload without needing any further check.
+SHORTS_MAX_SECONDS = 180
+
+
+def check_is_short(video_id: str, client: httpx.Client | None = None) -> bool | None:
+    """Ask youtube.com whether a video is a Short (no Data API quota spent).
+
+    ``https://www.youtube.com/shorts/<id>`` answers 200 for a Short and
+    redirects to ``/watch?v=<id>`` for a regular video. Anything else (network
+    error, consent page, rate limit) returns None so callers fall back to the
+    duration heuristic instead of guessing."""
+    url = f"https://www.youtube.com/shorts/{video_id}"
+    try:
+        if client is None:
+            with httpx.Client(timeout=5.0) as c:
+                resp = c.head(url, follow_redirects=False)
+        else:
+            resp = client.head(url, follow_redirects=False)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code == 200:
+        return True
+    if resp.is_redirect and "/watch" in resp.headers.get("location", ""):
+        return False
+    return None
 
 
 def _to_int(value: str | None) -> int | None:
@@ -211,6 +294,7 @@ def video_payload_to_fields(item: dict) -> dict:
         "description": snippet.get("description"),
         "thumbnail_url": thumb.get("url") if thumb else None,
         "published_at": snippet.get("publishedAt"),
+        "live_broadcast_content": snippet.get("liveBroadcastContent"),
         "duration_seconds": parse_iso8601_duration(content.get("duration")),
         "tags": snippet.get("tags"),
         "category_id": snippet.get("categoryId"),

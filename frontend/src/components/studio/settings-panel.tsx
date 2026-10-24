@@ -1,0 +1,260 @@
+"use client";
+
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, Plus, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorMessage } from "@/components/error-message";
+import {
+  getOwnChannel,
+  getStudioStatus,
+  saveKeywords,
+  setAutoDiscovery,
+  setOwnChannel,
+  type SerpApiStatus,
+} from "@/lib/studio-api";
+
+function SerpApiCard({ serpapi }: { serpapi: SerpApiStatus }) {
+  const pct = serpapi.cap > 0 ? Math.min(100, Math.round((serpapi.used / serpapi.cap) * 100)) : 0;
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">SerpApi searches</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {serpapi.configured ? (
+          <>
+            <p className="tabular-nums">
+              <span className="font-semibold">{serpapi.used}</span> / {serpapi.cap} searches used in{" "}
+              {serpapi.month}
+            </p>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={serpapi.cap}
+              aria-valuenow={serpapi.used}
+              aria-label="SerpApi searches used this month"
+              className="h-2 w-full overflow-hidden rounded-full bg-muted"
+            >
+              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Discovery, trends and transcripts stop at the cap. Repeated searches are cached for 7 days and cost
+              nothing.
+            </p>
+          </>
+        ) : (
+          <p className="text-muted-foreground">
+            Not configured — add <code className="rounded bg-muted px-1">SERPAPIKEY</code> to{" "}
+            <code className="rounded bg-muted px-1">backend/.env</code> and restart the backend.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function KeywordsCard({ saved }: { saved: string[] }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<string[]>(saved);
+  const [input, setInput] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => saveKeywords(draft),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["studio", "status"] }),
+  });
+
+  const changed = draft.length !== saved.length || draft.some((k, i) => k !== saved[i]);
+
+  function add() {
+    const phrase = input.trim().replace(/\s+/g, " ").toLowerCase();
+    if (phrase && !draft.includes(phrase)) setDraft([...draft, phrase]);
+    setInput("");
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Niche keywords</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Used to discover competitors and trends. Up to 20 phrases, 60 characters each.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <ul className="flex flex-wrap gap-2" aria-label="Niche keywords">
+          {draft.map((k) => (
+            <li key={k}>
+              <Badge variant="secondary" className="gap-1 pr-1">
+                {k}
+                <button
+                  type="button"
+                  aria-label={`Remove ${k}`}
+                  onClick={() => setDraft(draft.filter((x) => x !== k))}
+                  className="rounded-full p-0.5 hover:bg-background/60"
+                >
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </Badge>
+            </li>
+          ))}
+        </ul>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add();
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Add a keyword, e.g. calm routine"
+            aria-label="New keyword"
+            maxLength={60}
+          />
+          <Button type="submit" variant="outline">
+            <Plus className="h-4 w-4" aria-hidden="true" /> Add
+          </Button>
+        </form>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => save.mutate()} disabled={!changed || draft.length === 0 || save.isPending}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Save keywords
+          </Button>
+          {save.isSuccess && !changed ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Check className="h-3.5 w-3.5" aria-hidden="true" /> Saved
+            </span>
+          ) : null}
+        </div>
+        {save.isError ? <ErrorMessage error={save.error} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OwnChannelCard() {
+  const queryClient = useQueryClient();
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["studio", "own-channel"],
+    queryFn: getOwnChannel,
+  });
+  const choose = useMutation({
+    mutationFn: (channelId: number) => setOwnChannel(channelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["studio", "own-channel"] });
+      queryClient.invalidateQueries({ queryKey: ["studio", "status"] });
+      queryClient.invalidateQueries({ queryKey: ["studio", "insights"] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Your channel</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Used to compare you with competitors and to size discovery. Pick it from the channels you already track.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {isPending ? (
+          <Skeleton className="h-9" />
+        ) : isError ? (
+          <ErrorMessage error={error} />
+        ) : data.candidates.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No channel is tracked yet. Analyze your channel on the Analyze page first.
+          </p>
+        ) : (
+          <>
+            <label className="sr-only" htmlFor="own-channel-select">
+              Your channel
+            </label>
+            <select
+              id="own-channel-select"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={data.channel?.id ?? ""}
+              onChange={(e) => choose.mutate(Number(e.target.value))}
+              disabled={choose.isPending}
+            >
+              {data.channel ? null : <option value="">Choose your channel…</option>}
+              {data.candidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+            {data.channel === null ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Several channels are tracked, so choose which one is yours.
+              </p>
+            ) : null}
+          </>
+        )}
+        {choose.isError ? <ErrorMessage error={choose.error} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AutoDiscoveryCard({ enabled }: { enabled: boolean }) {
+  const queryClient = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => setAutoDiscovery(next),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["studio", "status"] }),
+  });
+  return (
+    <Card>
+      <CardContent className="space-y-2 p-4">
+        <label className="flex cursor-pointer items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4"
+            checked={enabled}
+            disabled={toggle.isPending}
+            onChange={(e) => toggle.mutate(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Discover competitors automatically every week</span>
+            <span className="block text-xs text-muted-foreground">
+              Off by default because each run uses up to 8 SerpApi searches. The Candidates tab always has a manual
+              button.
+            </span>
+          </span>
+        </label>
+        {toggle.isError ? <ErrorMessage error={toggle.error} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function SettingsPanel() {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["studio", "status"],
+    queryFn: getStudioStatus,
+  });
+
+  if (isPending) {
+    return (
+      <div role="status" aria-label="Loading studio settings" className="space-y-4">
+        <Skeleton className="h-28" />
+        <Skeleton className="h-48" />
+      </div>
+    );
+  }
+  if (isError) return <ErrorMessage error={error} />;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <SerpApiCard serpapi={data.serpapi} />
+      <OwnChannelCard />
+      <AutoDiscoveryCard enabled={data.auto_discovery} />
+      {/* key: start a fresh draft whenever the server value changes (after save/refetch) */}
+      <KeywordsCard key={data.keywords.join(" ")} saved={data.keywords} />
+    </div>
+  );
+}

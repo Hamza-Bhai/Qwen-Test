@@ -15,7 +15,10 @@ Design notes
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    and_,
+    or_,
     JSON,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -65,10 +68,17 @@ class Channel(Base):
     view_count: Mapped[int | None] = mapped_column(Integer)
     channel_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the user removes the channel but chooses to keep its data. An
+    # archived channel is hidden and not synced; adding it again clears this
+    # and brings back its videos, snapshots and history.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     owner: Mapped["User | None"] = relationship(back_populates="channels")
     videos: Mapped[list["Video"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
+    analyses: Mapped[list["ChannelAnalysis"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )
 
@@ -86,6 +96,12 @@ class Video(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(String(512))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    # Result of the youtube.com/shorts/<id> check (True = Short, False =
+    # regular video, NULL = not checked / check failed -> duration fallback).
+    is_short: Mapped[bool | None] = mapped_column(Boolean)
+    # snippet.liveBroadcastContent: "none" | "upcoming" | "live". Only "none"
+    # (or NULL for rows synced before this column existed) has settled stats.
+    live_broadcast_content: Mapped[str | None] = mapped_column(String(16))
     tags: Mapped[list | None] = mapped_column(JSON)
     category_id: Mapped[str | None] = mapped_column(String(16))
     # Public statistics only. Private analytics (CTR, retention, revenue)
@@ -94,11 +110,49 @@ class Video(Base):
     like_count: Mapped[int | None] = mapped_column(Integer)
     comment_count: Mapped[int | None] = mapped_column(Integer)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when a sync no longer finds the video on YouTube (deleted or made
+    # private). Removed videos keep their row but leave every analysis.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")
+    snapshots: Mapped[list["VideoSnapshot"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("ix_videos_channel_published", "channel_id", "published_at"),)
+
+
+class VideoSnapshot(Base):
+    """Public stats of one video as observed during one sync.
+
+    ``videos`` only keeps the latest numbers. Snapshots keep the history, so
+    views gained in a video's first days can be measured later instead of
+    guessed from lifetime views / age.
+    """
+
+    __tablename__ = "video_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int | None] = mapped_column(Integer)
+    comment_count: Mapped[int | None] = mapped_column(Integer)
+
+    video: Mapped["Video"] = relationship(back_populates="snapshots")
+
+    __table_args__ = (Index("ix_video_snapshots_video_captured", "video_id", "captured_at"),)
+
+
+def analyzable_video_filter():
+    """SQL filter excluding scheduled premieres and ongoing live streams, which
+    have no settled stats (0 views, duration P0D), and videos removed from
+    YouTube, whose stored stats are stale."""
+    return and_(
+        Video.removed_at.is_(None),
+        or_(Video.live_broadcast_content.is_(None), Video.live_broadcast_content == "none"),
+    )
 
 
 class ApiCache(Base):
@@ -148,3 +202,31 @@ class JobRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     detail: Mapped[dict | None] = mapped_column(JSON)
+
+
+class ChannelAnalysis(Base):
+    """History of channel analyses (one row per analyze/sync run).
+
+    Snapshots the public stats *as returned by the API at that moment* so the
+    dashboard can show how a channel changed over time. No derived or invented
+    metrics — every column mirrors an actual channels.list response (rule #10).
+    """
+
+    __tablename__ = "channel_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    trigger: Mapped[str] = mapped_column(String(32), default="analyze")  # analyze|sync|scheduler
+    subscriber_count: Mapped[int | None] = mapped_column(Integer)
+    video_count: Mapped[int | None] = mapped_column(Integer)
+    view_count: Mapped[int | None] = mapped_column(Integer)
+    videos_synced: Mapped[int] = mapped_column(Integer, default=0)
+    quota_units_used: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[dict | None] = mapped_column(JSON)  # deterministic metrics snapshot
+
+    channel: Mapped["Channel"] = relationship(back_populates="analyses")
+
+    __table_args__ = (Index("ix_channel_analyses_channel_created", "channel_id", "created_at"),)

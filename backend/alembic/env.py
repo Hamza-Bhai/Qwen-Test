@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import get_settings
 from app.db.base import Base
 import app.db.models  # noqa: F401  (registers all tables on Base.metadata)
+import app.studio.models  # noqa: F401  (Growth Studio tables)
 
 config = context.config
 

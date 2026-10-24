@@ -1,11 +1,12 @@
 """YouTube Data API v3 quota tracking.
 
-Every endpoint costs a known number of quota units; we record usage per UTC
-day so sync jobs can refuse to run when the daily budget is exhausted instead
+Every endpoint costs a known number of quota units; we record usage per
+Pacific-time day (YouTube resets quota at midnight Pacific) so sync jobs can refuse to run when the daily budget is exhausted instead
 of hammering the API into a quota error.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import QuotaUsage
+
+# YouTube's daily quota resets at midnight Pacific time (DST-aware), not UTC.
+QUOTA_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
 # Documented unit costs for YouTube Data API v3 endpoints.
 QUOTA_COSTS = {
@@ -32,11 +36,15 @@ class QuotaTracker:
     def __init__(self, db: Session, service: str = "youtube") -> None:
         self.db = db
         self.service = service
-        self.settings = get_settings()
+
+    @property
+    def settings(self):
+        """Resolve settings lazily so per-test env changes are always honored."""
+        return get_settings()
 
     @property
     def today(self) -> date:
-        return datetime.now(timezone.utc).date()
+        return datetime.now(QUOTA_TIMEZONE).date()
 
     def _row(self, day: date) -> QuotaUsage:
         row = self.db.execute(
