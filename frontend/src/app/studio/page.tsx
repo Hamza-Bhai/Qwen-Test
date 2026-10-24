@@ -3,7 +3,7 @@
 import { Sparkles } from "lucide-react";
 import { DashboardPanel } from "@/components/studio/dashboard/dashboard-panel";
 import { CompetitorsPanel } from "@/components/studio/competitors/competitors-panel";
-import { ComingSoon } from "@/components/studio/coming-soon";
+import { IdeasPanel } from "@/components/studio/ideas/ideas-panel";
 import { MyChannelPanel } from "@/components/studio/my-channel/my-channel-panel";
 import { SettingsPanel } from "@/components/studio/settings-panel";
 import { Tabs } from "@/components/ui/tabs";
@@ -26,7 +26,7 @@ export default function StudioPage() {
         defaultId="settings"
         tabs={[
           { id: "dashboard", label: "Dashboard", content: <DashboardPanel /> },
-          { id: "ideas", label: "Ideas & Plan", content: <ComingSoon title="Daily ideas and content calendar" milestone="D" /> },
+          { id: "ideas", label: "Ideas & Plan", content: <IdeasPanel /> },
           { id: "my-channel", label: "My channel", content: <MyChannelPanel /> },
           { id: "competitors", label: "Competitors", content: <CompetitorsPanel /> },
           { id: "settings", label: "Settings", content: <SettingsPanel /> },
