@@ -108,12 +108,21 @@ AI calls are capped per day (default 3) and cached by evidence hash.
   ~60 s as the hook text and the segment list as an outline source.
 - **Compare with me**: owner's median views/day and views per subscriber vs the watchlist, per format.
 
-### Milestone C — my private channel
+### Milestone C — my private channels
 - **Connect with Google** (OAuth web flow, redirect to the local backend, scopes
   `yt-analytics.readonly` + `youtube.readonly`). Refresh token stored in the local DB (unencrypted — the
   DB is local and gitignored; revisit before any deployment). Connect / disconnect buttons.
-- The owner's channel *public* data keeps using the existing `Channel`/`Video` rows through the existing
-  sync; the studio links to that row (`studio_my_channel.channel_id`) and only reads it.
+- **Several own channels** (owner's request, 2026-10-24): every press of "Connect" adds one channel
+  (Google asks which account / brand channel); each connected channel keeps its own token, data and
+  diagnosis, and the My channel tab has a channel switcher. Connecting the same channel again only
+  refreshes its token. Disconnect revokes the token at Google and keeps the stored history.
+- A connected channel's *public* data keeps using the existing `Channel`/`Video` rows through the
+  existing sync when such a row exists (matched by YouTube channel id, read only); it is never required.
+  The own videos needed for diagnosis (title, publish time, duration, Shorts flag) are read with the
+  channel's own OAuth token and stored in studio tables.
+- Spike result (2026-10-24): OAuth works; the Reporting API lists `channel_reach_basic_a1` and
+  `channel_reach_combined_a1` for a connected channel, so impressions/CTR are in scope. The Analytics API
+  rejects impression metrics (400), as expected. The app is "In production" (unverified, personal use).
 - **Pull** (daily + button), stored as time series so improvement is trackable:
   channel daily (views, watch minutes, avg view duration/percentage, subs gained/lost, likes, comments,
   shares); per-video totals; traffic sources (type, share, trend); retention curve per video for the
@@ -125,7 +134,7 @@ AI calls are capped per day (default 3) and cached by evidence hash.
   views, cadence vs results, which title keywords/topics beat or lag the channel's own baseline,
   publish day/hour effect (only with ≥ 20 videos and a clear gap, otherwise "no reliable data").
 - **Progress tracking**: week-over-week and 28-day-over-28-day change for the key metrics; a "baseline
-  at the time" snapshot is stored when advice is accepted.
+  at the time" snapshot is stored when advice is accepted (that part ships with milestone D's advice).
 
 ### Milestone D — advisor, ideas, planner
 - **Evidence pack** (deterministic, code-built): own diagnosis findings, own top/bottom videos,
@@ -153,7 +162,7 @@ AI calls are capped per day (default 3) and cached by evidence hash.
 - Backend package `app/studio/`: `models.py`, `schemas.py`, `routes/*.py`, `services/` (serpapi,
   discovery, competitor_sync, google_oauth, analytics_pull, reporting_pull, diagnosis, evidence,
   advisor, ideas, planner), `jobs.py`. Sync handlers (`def`), like the existing routes.
-- Tables (all `studio_*`): `my_channel`, `competitor`, `competitor_video`, `competitor_video_snapshot`,
+- Tables (all `studio_*`): `google_connection` (one per connected own channel), `my_video`, `competitor`, `competitor_video`, `competitor_video_snapshot`,
   `keyword`, `analytics_channel_daily`, `analytics_video_daily`, `analytics_traffic`, `analytics_retention`,
   `trend_point`, `idea`, `idea_outcome`, `advisor_report`. Alembic migration `studio_*` only; do not
   touch existing tables.
@@ -180,6 +189,8 @@ AI calls are capped per day (default 3) and cached by evidence hash.
 ## 8. Calls I made (owner can overturn)
 
 - Studio is a separate area; the owner's own channel is linked to the existing public row instead of duplicated.
+- Several own channels can be connected; competitor features keep using the single "own channel"
+  chosen in Settings (milestone B), private analytics are per connected channel.
 - Competitor discovery suggests, the owner approves; no automatic watchlist additions.
 - OAuth refresh token stored unencrypted in the local DB; revisit before deploying anywhere.
 - No new dependencies; OAuth implemented with `httpx`.
