@@ -84,7 +84,7 @@ def _alembic(env, *args):
 def test_alembic_head_creates_competitor_tables(tmp_path):
     db_file = tmp_path / "mig.db"
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_file}"}
-    result = _alembic(env, "upgrade", "head")
+    result = _alembic(env, "upgrade", HEAD)  # pinned: head moved on in milestone C
     assert result.returncode == 0, result.stderr
     con = sqlite3.connect(db_file)
     try:

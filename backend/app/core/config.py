@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     )
     serpapi_monthly_cap: int = 200  # hard stop below the free plan's 250 searches/month
 
+    # --- Google OAuth (Growth Studio: the owner's own channels, read-only) -----------
+    google_oauth_client_id: str | None = None  # env: GOOGLE_OAUTH_CLIENT_ID
+    google_oauth_client_secret: str | None = None  # env: GOOGLE_OAUTH_CLIENT_SECRET
+    google_oauth_redirect_uri: str = "http://localhost:8000/api/v1/studio/oauth/callback"
+    studio_frontend_url: str = "http://localhost:3000"  # where the OAuth callback sends the browser back
+
     # --- Cache / quota policy ------------------------------------------------------
     cache_ttl_seconds: int = 900  # default TTL for cached API responses
 
@@ -51,7 +57,7 @@ class Settings(BaseSettings):
     # --- Scheduler -------------------------------------------------------------------
     enable_scheduler: bool = True  # in-process APScheduler (Phase 1)
 
-    @field_validator("serpapi_key")
+    @field_validator("serpapi_key", "google_oauth_client_id", "google_oauth_client_secret")
     @classmethod
     def _blank_key_is_none(cls, v: str | None) -> str | None:
         return v.strip() or None if v else None

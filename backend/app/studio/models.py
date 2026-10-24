@@ -3,9 +3,9 @@
 Kept apart from ``app.db.models`` so the public-channel feature is untouched.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -98,3 +98,123 @@ class StudioCompetitorVideoSnapshot(Base):
 
     video: Mapped["StudioCompetitorVideo"] = relationship(back_populates="snapshots")
 
+
+
+# --- Milestone C: the owner's connected channels and their private analytics ---------------
+
+
+def _connection_fk() -> Mapped[int]:
+    return mapped_column(ForeignKey("studio_google_connection.id", ondelete="CASCADE"), index=True)
+
+
+class StudioGoogleConnection(Base):
+    """One own channel connected with Google OAuth (several are allowed)."""
+
+    __tablename__ = "studio_google_connection"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    youtube_channel_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    thumbnail_url: Mapped[str | None] = mapped_column(String(512))
+    # Stored unencrypted: the DB is local and gitignored. Never logged or returned by the API.
+    refresh_token: Mapped[str | None] = mapped_column(Text)
+    scopes: Mapped[str] = mapped_column(String(512), default="")
+    status: Mapped[str] = mapped_column(String(20), default="connected")  # connected | disconnected | needs_reconnect
+    last_error: Mapped[str | None] = mapped_column(Text)
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_pulled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reach_job_id: Mapped[str | None] = mapped_column(String(64))
+    reach_report_ids: Mapped[list] = mapped_column(JSON, default=list)
+
+    def __repr__(self) -> str:  # keeps the refresh token out of logs and tracebacks
+        return f"<StudioGoogleConnection id={self.id} channel={self.youtube_channel_id} status={self.status}>"
+
+
+class StudioMyVideo(Base):
+    """An upload of a connected channel (read with that channel's own token)."""
+
+    __tablename__ = "studio_my_video"
+    __table_args__ = (UniqueConstraint("connection_id", "youtube_video_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    youtube_video_id: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(512))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    is_short: Mapped[bool | None] = mapped_column(Boolean)
+    live_broadcast_content: Mapped[str | None] = mapped_column(String(16))
+
+
+class StudioChannelDaily(Base):
+    __tablename__ = "studio_analytics_channel_daily"
+    __table_args__ = (UniqueConstraint("connection_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    day: Mapped[date] = mapped_column(Date)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    watch_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    avg_view_duration_s: Mapped[int] = mapped_column(Integer, default=0)
+    avg_view_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    subs_gained: Mapped[int] = mapped_column(Integer, default=0)
+    subs_lost: Mapped[int] = mapped_column(Integer, default=0)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    comments: Mapped[int] = mapped_column(Integer, default=0)
+    shares: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StudioVideoTotals(Base):
+    """Lifetime totals of one video, as read on ``as_of`` (one row per pull day)."""
+
+    __tablename__ = "studio_analytics_video_daily"
+    __table_args__ = (UniqueConstraint("connection_id", "youtube_video_id", "as_of"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    youtube_video_id: Mapped[str] = mapped_column(String(32))
+    as_of: Mapped[date] = mapped_column(Date)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    watch_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    avg_view_duration_s: Mapped[int] = mapped_column(Integer, default=0)
+    avg_view_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    subs_gained: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StudioTrafficDaily(Base):
+    __tablename__ = "studio_analytics_traffic"
+    __table_args__ = (UniqueConstraint("connection_id", "day", "source"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    day: Mapped[date] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(64))
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    watch_minutes: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StudioRetention(Base):
+    """Audience retention curve point (elapsedVideoTimeRatio -> audienceWatchRatio)."""
+
+    __tablename__ = "studio_analytics_retention"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    youtube_video_id: Mapped[str] = mapped_column(String(32), index=True)
+    elapsed_ratio: Mapped[float] = mapped_column(Float)
+    watch_ratio: Mapped[float] = mapped_column(Float)
+    pulled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StudioReachDaily(Base):
+    """Impressions and clicks (impressions x CTR) per day and video, from Reporting API files."""
+
+    __tablename__ = "studio_reach_daily"
+    __table_args__ = (UniqueConstraint("connection_id", "day", "youtube_video_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connection_id: Mapped[int] = _connection_fk()
+    day: Mapped[date] = mapped_column(Date)
+    youtube_video_id: Mapped[str] = mapped_column(String(32))
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[float] = mapped_column(Float, default=0.0)
