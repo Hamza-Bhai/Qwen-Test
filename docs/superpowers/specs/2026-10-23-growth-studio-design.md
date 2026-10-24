@@ -1,8 +1,4 @@
-# Growth - AI provider (2026-10-24, owner's request): besides an OpenAI-compatible API, `AI_PROVIDER=claude_cli` runs
-  `claude -p` (Claude Code CLI signed in with the owner's own Claude subscription) with all tools disabled,
-  `--safe-mode` (no CLAUDE.md/hooks/plugins/MCP) and in an empty temp folder. Personal use on this PC only;
-  it shares the subscription's usage limits. The daily cap still applies.
-Studio — design
+# Growth Studio — design
 
 Personal tool, one user (the owner of the AXIOM MINDSET channel). Not a SaaS: no multi-user, no
 accounts, no billing, no new infrastructure.
@@ -202,6 +198,10 @@ AI calls are capped per day (default 3) and cached by evidence hash.
   Without an AI key the Dashboard shows the rule-based findings and the evidence; advice and ideas say
   "add AI_API_KEY". Real data showed Shorts carry ~75 % of AXIOM's views, so every comparison stays per
   format.
+- AI provider (2026-10-24, owner's request): besides an OpenAI-compatible API, `AI_PROVIDER=claude_cli` runs
+  `claude -p` (Claude Code CLI signed in with the owner's own Claude subscription) with all tools disabled,
+  `--safe-mode` (no CLAUDE.md/hooks/plugins/MCP) and in an empty temp folder. Personal use on this PC only;
+  it shares the subscription's usage limits. The daily cap still applies.
 - Competitor discovery suggests, the owner approves; no automatic watchlist additions.
 - OAuth refresh token stored unencrypted in the local DB; revisit before deploying anywhere.
 - No new dependencies; OAuth implemented with `httpx`.
